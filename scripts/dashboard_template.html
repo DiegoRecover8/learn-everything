@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn Everything</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --hair: #e1e0d9; --axis: #c3c2b7; --track: #ecebe5;
+  --accent: #2a78d6; --accent-ink: #1c5cab;
+  --st-new: #fcfcfb; --st-learning: #86b6ef; --st-reviewing: #2a78d6; --st-mastered: #104281;
+  --on-learning: #0b0b0b; --on-reviewing: #ffffff; --on-mastered: #ffffff;
+  --h1: #cde2fb; --h2: #86b6ef; --h3: #3987e5; --h4: #184f95;
+  --good: #0ca30c; --good-text: #006300; --warn: #fab219; --crit: #d03b3b;
+  --shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --hair: #2c2c2a; --axis: #383835; --track: #262624;
+    --accent: #3987e5; --accent-ink: #86b6ef;
+    --st-new: #1a1a19; --st-learning: #184f95; --st-reviewing: #3987e5; --st-mastered: #9ec5f4;
+    --on-learning: #ffffff; --on-reviewing: #ffffff; --on-mastered: #0b0b0b;
+    --h1: #104281; --h2: #1c5cab; --h3: #3987e5; --h4: #9ec5f4;
+    --good-text: #0ca30c; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --hair: #2c2c2a; --axis: #383835; --track: #262624;
+  --accent: #3987e5; --accent-ink: #86b6ef;
+  --st-new: #1a1a19; --st-learning: #184f95; --st-reviewing: #3987e5; --st-mastered: #9ec5f4;
+  --on-learning: #ffffff; --on-reviewing: #ffffff; --on-mastered: #0b0b0b;
+  --h1: #104281; --h2: #1c5cab; --h3: #3987e5; --h4: #9ec5f4;
+  --good-text: #0ca30c; --shadow: none;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1160px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+h1 { font-size: 24px; line-height: 1.2; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.sub { color: var(--ink-2); margin-top: 4px; font-size: 14px; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin: 0 0 12px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.ghost { background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+.ghost:hover { border-color: var(--axis); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; box-shadow: var(--shadow); }
+.tile { padding: 14px 16px; min-width: 0; }
+.tile .k { font-size: 12px; color: var(--ink-2); }
+.tile .v { font-size: 30px; font-weight: 650; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 14px; font-weight: 500; color: var(--ink-2); margin-left: 4px; }
+.tile .d { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; }
+.bar { height: 6px; background: var(--track); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.ok { color: var(--good-text); font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.col { display: grid; gap: 16px; min-width: 0; }
+.card { padding: 16px; min-width: 0; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* map */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--axis); display: inline-block; }
+.unit { font-weight: 600; font-size: 14px; margin: 18px 0 2px; display: flex; justify-content: space-between; gap: 8px; }
+.unit:first-of-type { margin-top: 6px; }
+.unit em { font-style: normal; font-weight: 400; color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+.path { position: relative; margin: 0 auto; width: 100%; max-width: 360px; }
+.path svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.path path { fill: none; stroke: var(--hair); stroke-width: 6; stroke-linecap: round; }
+.node {
+  position: absolute; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+  border: 2px solid var(--axis); background: var(--st-new); color: var(--muted);
+  display: grid; place-items: center; font-size: 18px; font-weight: 700; padding: 0;
+  box-shadow: 0 0 0 3px var(--surface); transition: transform .12s;
+}
+.node:hover { transform: scale(1.07); }
+.node[data-s="learning"] { background: var(--st-learning); border-color: var(--st-learning); color: var(--on-learning); }
+.node[data-s="reviewing"] { background: var(--st-reviewing); border-color: var(--st-reviewing); color: var(--on-reviewing); }
+.node[data-s="mastered"] { background: var(--st-mastered); border-color: var(--st-mastered); color: var(--on-mastered); }
+.node[aria-pressed="true"] { outline: 3px solid var(--accent); outline-offset: 3px; }
+.node.next { border-color: var(--accent); border-style: dashed; color: var(--accent-ink); }
+.nlabel { position: absolute; font-size: 12.5px; line-height: 1.25; color: var(--ink-2); width: 120px; transform: translateY(-50%); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.nlabel.r { text-align: left; } .nlabel.l { text-align: right; }
+
+.detail h3 { margin: 0 0 2px; font-size: 17px; }
+.detail .meta { color: var(--ink-2); font-size: 13px; }
+.kv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+.kv div { background: var(--page); border-radius: 8px; padding: 8px 10px; }
+.kv b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.kv span { font-size: 12px; color: var(--ink-2); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; border: 1px solid var(--hair); border-radius: 99px; padding: 2px 9px; margin: 8px 6px 0 0; color: var(--ink-2); }
+
+/* charts */
+.heat { display: grid; grid-template-rows: repeat(7, 12px); grid-auto-flow: column; grid-auto-columns: 12px; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
+.heat i { border-radius: 3px; background: var(--track); }
+.heat i.e { background: transparent; }
+.heat i[data-b="1"] { background: var(--h1); } .heat i[data-b="2"] { background: var(--h2); }
+.heat i[data-b="3"] { background: var(--h3); } .heat i[data-b="4"] { background: var(--h4); }
+.heat i.fz { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.heat i.td { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+.scale { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-2); margin-top: 10px; }
+.scale i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+svg.line { width: 100%; height: auto; display: block; overflow: visible; }
+svg.line text { fill: var(--muted); font-size: 11px; }
+svg.line .g { stroke: var(--hair); stroke-width: 1; }
+svg.line .l { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg.line .p { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+svg.line .x { stroke: var(--axis); stroke-width: 1; visibility: hidden; }
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; border-bottom: 1px solid var(--axis); }
+.bars div { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 0; }
+.bars i { display: block; width: 100%; max-width: 24px; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 0; }
+.bars div:hover i { background: var(--accent-ink); }
+.bars b { font-size: 11px; font-weight: 600; color: var(--ink-2); margin-bottom: 2px; }
+.xl { display: flex; gap: 2px; margin-top: 4px; }
+.xl span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); min-width: 0; }
+.xl span.t { color: var(--ink); font-weight: 600; }
+.empty { color: var(--muted); font-size: 13.5px; padding: 8px 0; }
+
+.ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ach div { border: 1px solid var(--hair); border-radius: 10px; padding: 10px; display: grid; grid-template-columns: 28px 1fr; gap: 2px 8px; align-items: center; }
+.ach .ic { font-size: 22px; grid-row: span 2; text-align: center; }
+.ach b { font-size: 13.5px; line-height: 1.2; } .ach span { font-size: 12px; color: var(--ink-2); line-height: 1.25; }
+.ach .lock { opacity: .55; } .ach .lock .ic { filter: grayscale(1); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 12px; padding: 0 8px 6px 0; }
+td { padding: 6px 8px 6px 0; border-top: 1px solid var(--hair); vertical-align: top; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
+.scroll { overflow-x: auto; }
+#tip { position: fixed; z-index: 9; pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12.5px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; display: none; }
+footer { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: center; }
+
+@media (max-width: 900px) {
+  .tiles { grid-template-columns: repeat(2, 1fr); }
+  .tiles .tile:first-child { grid-column: span 2; }
+  .grid, .two { grid-template-columns: minmax(0, 1fr); }
+  .kv { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="tip" role="status"></div>
+<script>
+const DATA = /*__LE_DATA__*/null;
+
+const I18N = {
+  en: {
+    noData: "No data. Run /learn dashboard to generate this page.",
+    theme: "Light / dark", daysLeft: "Days to the exam", noDate: "No exam date", examDay: "Exam day!", past: "Exam date has passed",
+    on: "on", finish: "Roadmap done by", streak: "Streak", days: "days", day: "day", freezes: "streak freezes", freeze1: "streak freeze", reviewPhase: "Review phase: all topics studied",
+    doneToday: "Studied today", notToday: "Not studied today yet", level: "Level", xpTo: "XP to level",
+    today: "Today", reviews: "reviews", newTopics: "new topics", goalDone: "✓ Goal done", perDay: "topics/day planned",
+    overload: "⚠ Tight plan: more topics per day than your daily time allows",
+    accuracy: "Accuracy", answers: "answers", noAnswers: "No answers yet",
+    map: "Roadmap", topics: "topics", studied: "studied",
+    s_new: "Not started", s_learning: "Learning", s_reviewing: "Reviewing", s_mastered: "Mastered", nextUp: "Next up",
+    pick: "Pick a topic on the map to see its details.", cards: "Questions", due: "Due now", weight: "Exam weight",
+    studiedOn: "Studied on", notStudied: "Not studied yet", sources: "Materials",
+    activity: "Activity · last 17 weeks", less: "Less", more: "More", frozen: "streak freeze",
+    trend: "Accuracy per study day", trendEmpty: "Your accuracy will show up here after your first sessions.",
+    forecast: "Reviews due · next 14 days", forecastEmpty: "No reviews scheduled yet.",
+    achievements: "Achievements", locked: "Locked", mocks: "Mock exams", mocksEmpty: "No mock exams yet. Run /learn exam.",
+    date: "Date", score: "Score", sessions: "Recent sessions", kind: "Type", minutes: "Min", correct: "Correct", xp: "XP",
+    study: "Study", mock: "Mock exam", file: "File", pages: "Pages", added: "Added", summary: "Summary",
+    sourcesEmpty: "No materials yet. Run /learn add <path>.", generated: "Generated", roadEmpty: "No roadmap yet. Run /learn to build it.",
+    totals: "in total", mastered: "mastered"
+  },
+  es: {
+    noData: "Sin datos. Ejecuta /learn dashboard para generar esta página.",
+    theme: "Claro / oscuro", daysLeft: "Días para el examen", noDate: "Sin fecha de examen", examDay: "¡Hoy es el examen!", past: "La fecha del examen ya pasó",
+    on: "el", finish: "Roadmap completo el", streak: "Racha", days: "días", day: "día", freezes: "protectores de racha", freeze1: "protector de racha", reviewPhase: "Fase de repaso: todos los temas vistos",
+    doneToday: "Hoy ya has estudiado", notToday: "Hoy aún no has estudiado", level: "Nivel", xpTo: "XP para el nivel",
+    today: "Hoy", reviews: "repasos", newTopics: "temas nuevos", goalDone: "✓ Meta cumplida", perDay: "temas/día previstos",
+    overload: "⚠ Plan ajustado: más temas al día de los que caben en tu tiempo diario",
+    accuracy: "Aciertos", answers: "respuestas", noAnswers: "Aún sin respuestas",
+    map: "Roadmap", topics: "temas", studied: "estudiados",
+    s_new: "Sin empezar", s_learning: "Aprendiendo", s_reviewing: "Repasando", s_mastered: "Dominado", nextUp: "Siguiente",
+    pick: "Pulsa un tema del mapa para ver su detalle.", cards: "Preguntas", due: "Pendientes", weight: "Peso en examen",
+    studiedOn: "Estudiado el", notStudied: "Aún sin estudiar", sources: "Materiales",
+    activity: "Actividad · últimas 17 semanas", less: "Menos", more: "Más", frozen: "protector de racha",
+    trend: "Aciertos por día de estudio", trendEmpty: "Aquí verás tus aciertos tras las primeras sesiones.",
+    forecast: "Repasos pendientes · próximos 14 días", forecastEmpty: "Aún no hay repasos programados.",
+    achievements: "Logros", locked: "Bloqueado", mocks: "Simulacros", mocksEmpty: "Aún no hay simulacros. Ejecuta /learn exam.",
+    date: "Fecha", score: "Nota", sessions: "Últimas sesiones", kind: "Tipo", minutes: "Min", correct: "Aciertos", xp: "XP",
+    study: "Estudio", mock: "Simulacro", file: "Archivo", pages: "Págs.", added: "Añadido", summary: "Resumen",
+    sourcesEmpty: "Aún no hay materiales. Ejecuta /learn add <ruta>.", generated: "Generado", roadEmpty: "Aún no hay roadmap. Ejecuta /learn para crearlo.",
+    totals: "en total", mastered: "dominados"
+  }
+};
+
+(function () {
+  const app = document.getElementById("app");
+  const tip = document.getElementById("tip");
+  if (!DATA) { app.textContent = I18N.en.noData; return; }
+  const T = I18N[DATA.lang] || I18N.en;
+  const loc = DATA.lang === "es" ? "es-ES" : "en-GB";
+  document.documentElement.lang = DATA.lang;
+  document.title = DATA.exam.name + " · Learn Everything";
+
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const d8 = s => new Date(s + "T12:00:00");
+  const fmt = (s, o) => d8(s).toLocaleDateString(loc, o || { day: "numeric", month: "short" });
+  const ICON = { new: "", learning: "•", reviewing: "↻", mastered: "★" };
+  const plan = DATA.plan, lv = DATA.level, tot = DATA.totals;
+
+  // ---------- tiles
+  let dl, dld;
+  if (plan.days_left == null) { dl = "—"; dld = T.noDate + (plan.finish_estimate ? " · " + T.finish + " " + fmt(plan.finish_estimate) : ""); }
+  else if (plan.days_left > 0) { dl = plan.days_left; dld = T.on + " " + fmt(DATA.exam.exam_date, { day: "numeric", month: "long", year: "numeric" }); }
+  else { dl = plan.days_left === 0 ? "0" : "—"; dld = plan.days_left === 0 ? T.examDay : T.past; }
+  const lvPct = Math.round(100 * (lv.xp - lv.floor) / (lv.next - lv.floor));
+  const goal = DATA.goal_done_today || (!plan.reviews_today_remaining && !plan.new_today_remaining && tot.topics > 0);
+
+  let html = `
+  <header>
+    <div><h1>${esc(DATA.exam.name)}</h1>
+      <div class="sub">${esc(DATA.learner.name)}${DATA.learner.education_level ? " · " + esc(DATA.learner.education_level) : ""} · ${tot.studied}/${tot.topics} ${T.topics} ${T.studied}</div></div>
+    <button class="ghost" id="theme">◐ ${T.theme}</button>
+  </header>
+  <section class="tiles">
+    <div class="tile"><div class="k">${T.daysLeft}</div><div class="v">${dl}</div><div class="d">${esc(dld)}</div></div>
+    <div class="tile"><div class="k">${T.streak}</div><div class="v">🔥 ${DATA.streak}<small>${DATA.streak === 1 ? T.day : T.days}</small></div>
+      <div class="d">${DATA.studied_today ? '<span class="ok">✓ ' + T.doneToday + "</span>" : T.notToday}${DATA.freezes ? " · ❄ " + DATA.freezes + " " + (DATA.freezes === 1 ? T.freeze1 : T.freezes) : ""}</div></div>
+    <div class="tile"><div class="k">${T.level}</div><div class="v">${lv.level}<small>${lv.xp} XP</small></div>
+      <div class="bar" role="img" aria-label="${lvPct}%"><i style="width:${lvPct}%"></i></div><div class="d">${lv.next - lv.xp} ${T.xpTo} ${lv.level + 1}</div></div>
+    <div class="tile"><div class="k">${T.today}</div>
+      <div class="v">${goal ? '<span class="ok" style="font-size:22px">' + T.goalDone + "</span>" : plan.reviews_today_remaining + "<small>" + T.reviews + "</small>"}</div>
+      <div class="d">${goal ? (plan.topics_pending ? plan.new_per_day + " " + T.perDay : T.reviewPhase) : "+ " + plan.new_today_remaining + " " + T.newTopics}</div></div>
+    <div class="tile"><div class="k">${T.accuracy}</div><div class="v">${tot.accuracy == null ? "—" : tot.accuracy + "<small>%</small>"}</div>
+      <div class="d">${tot.answers ? tot.answers + " " + T.answers + " " + T.totals : T.noAnswers}</div></div>
+  </section>
+  ${plan.overload ? '<div class="card" style="margin-bottom:16px;font-size:13.5px">' + T.overload + "</div>" : ""}
+  <div class="grid">
+    <div class="col">
+      <section class="card"><h2>${T.map}</h2>
+        <div class="legend">${["new", "learning", "reviewing", "mastered"].map(s =>
+          `<span><i class="sw" style="background:var(--st-${s});border-color:${s === "new" ? "var(--axis)" : "var(--st-" + s + ")"}"></i>${ICON[s]} ${T["s_" + s]}</span>`).join("")}</div>
+        <div id="map"></div></section>
+    </div>
+    <div class="col">
+      <section class="card detail" id="detail"><div class="empty">${T.pick}</div></section>
+      <div class="two">
+        <section class="card"><h2>${T.activity}</h2><div class="heat" id="heat"></div>
+          <div class="scale">${T.less} <i style="background:var(--track)"></i><i style="background:var(--h1)"></i><i style="background:var(--h2)"></i><i style="background:var(--h3)"></i><i style="background:var(--h4)"></i> ${T.more}</div></section>
+        <section class="card"><h2>${T.forecast}</h2><div id="forecast"></div></section>
+      </div>
+      <section class="card"><h2>${T.trend}</h2><div id="trend"></div></section>
+      <section class="card"><h2>${T.achievements} · ${DATA.achievements.filter(a => a.date).length}/${DATA.achievements.length}</h2><div class="ach" id="ach"></div></section>
+      <div class="two">
+        <section class="card"><h2>${T.mocks}</h2><div class="scroll" id="mocks"></div></section>
+        <section class="card"><h2>${T.sources}</h2><div class="scroll" id="sources"></div></section>
+      </div>
+      <section class="card"><h2>${T.sessions}</h2><div class="scroll" id="sessions"></div></section>
+    </div>
+  </div>
+  <footer>Learn Everything · ${T.generated} ${esc(DATA.generated.replace("T", " "))}</footer>`;
+  app.innerHTML = html;
+
+  // ---------- tooltip
+  function showTip(e, text) {
+    tip.textContent = text; tip.style.display = "block";
+    const w = tip.offsetWidth, x = Math.min(window.innerWidth - w - 8, Math.max(8, e.clientX - w / 2));
+    tip.style.left = x + "px"; tip.style.top = Math.max(8, e.clientY - 36) + "px";
+  }
+  const hideTip = () => { tip.style.display = "none"; };
+  function hover(el, text) {
+    el.addEventListener("mousemove", e => showTip(e, text));
+    el.addEventListener("mouseleave", hideTip);
+  }
+
+  // ---------- map
+  const map = document.getElementById("map");
+  const byId = {};
+  let firstNew = null;
+  DATA.units.forEach(u => u.topics.forEach(t => { byId[t.id] = Object.assign({ unit: u.name }, t); if (!firstNew && t.status === "new") firstNew = t.id; }));
+  if (!DATA.units.length) map.innerHTML = `<div class="empty">${T.roadEmpty}</div>`;
+  const OFF = [0, 1, 1.6, 1, 0, -1, -1.6, -1], STEP = 84, PAD = 40;
+  let k = 0;
+  DATA.units.forEach(u => {
+    const done = u.topics.filter(t => t.status !== "new").length;
+    const h = document.createElement("div");
+    h.className = "unit"; h.innerHTML = `<span>${esc(u.name)}</span><em>${done}/${u.topics.length}</em>`;
+    map.appendChild(h);
+    const box = document.createElement("div");
+    box.className = "path"; box.style.height = (PAD * 2 + STEP * Math.max(0, u.topics.length - 1)) + "px";
+    const pts = u.topics.map((t, i) => ({ x: 50 + OFF[(k + i) % 8] * 13, y: PAD + i * STEP }));
+    let dpath = "";
+    pts.forEach((p, i) => {
+      if (!i) dpath += `M ${p.x} ${p.y}`;
+      else { const q = pts[i - 1], m = (q.y + p.y) / 2; dpath += ` C ${q.x} ${m}, ${p.x} ${m}, ${p.x} ${p.y}`; }
+    });
+    box.innerHTML = `<svg viewBox="0 0 100 ${PAD * 2 + STEP * Math.max(0, u.topics.length - 1)}" preserveAspectRatio="none"><path d="${dpath}" vector-effect="non-scaling-stroke"/></svg>`;
+    u.topics.forEach((t, i) => {
+      const p = pts[i], b = document.createElement("button");
+      b.className = "node" + (t.id === firstNew ? " next" : ""); b.dataset.s = t.status; b.dataset.id = t.id;
+      b.style.left = p.x + "%"; b.style.top = p.y + "px";
+      b.textContent = t.id === firstNew ? "▶" : ICON[t.status];
+      b.setAttribute("aria-label", t.name + " — " + T["s_" + t.status]); b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => select(t.id));
+      box.appendChild(b);
+      const l = document.createElement("div"), right = p.x <= 50;
+      l.className = "nlabel " + (right ? "r" : "l"); l.textContent = t.name; l.style.top = p.y + "px";
+      if (right) l.style.left = `calc(${p.x}% + 36px)`; else l.style.right = `calc(${100 - p.x}% + 36px)`;
+      l.style.width = right ? `calc(${100 - p.x}% - 40px)` : `calc(${p.x}% - 40px)`;
+      box.appendChild(l);
+    });
+    k += u.topics.length;
+    map.appendChild(box);
+  });
+
+  function select(id) {
+    const t = byId[id];
+    document.querySelectorAll(".node").forEach(n => n.setAttribute("aria-pressed", n.dataset.id === id ? "true" : "false"));
+    document.getElementById("detail").innerHTML = `
+      <h3>${esc(t.name)}</h3>
+      <div class="meta">${esc(t.unit)} · ${ICON[t.status]} ${T["s_" + t.status]}${t.id === firstNew ? " · " + T.nextUp : ""} · ${t.studied ? T.studiedOn + " " + fmt(t.studied) : T.notStudied}</div>
+      ${t.summary ? '<p style="margin:10px 0 0;color:var(--ink-2);font-size:14px">' + esc(t.summary) + "</p>" : ""}
+      <div class="kv">
+        <div><b>${t.accuracy == null ? "—" : t.accuracy + "%"}</b><span>${T.accuracy}</span></div>
+        <div><b>${t.cards}</b><span>${T.cards}</span></div>
+        <div><b>${t.due}</b><span>${T.due}</span></div>
+        <div><b>×${t.weight}</b><span>${T.weight}</span></div>
+      </div>
+      ${t.sources.map(s => '<span class="pill">📄 ' + esc(s) + "</span>").join("")}`;
+  }
+  const start = firstNew || (DATA.units[0] && DATA.units[0].topics[0] && DATA.units[0].topics[0].id);
+  if (start) select(start);
+
+  // ---------- activity heatmap
+  const heat = document.getElementById("heat");
+  const lead = (d8(DATA.activity[0].date).getDay() + 6) % 7;
+  for (let i = 0; i < lead; i++) heat.appendChild(Object.assign(document.createElement("i"), { className: "e" }));
+  DATA.activity.forEach(a => {
+    const c = document.createElement("i"), n = a.answers;
+    c.dataset.b = n >= 50 ? 4 : n >= 25 ? 3 : n >= 10 ? 2 : n >= 1 || a.studied ? 1 : 0;
+    if (a.frozen) c.className = "fz";
+    if (a.date === DATA.today) c.className += " td";
+    hover(c, fmt(a.date, { weekday: "short", day: "numeric", month: "short" }) + " · " + (a.frozen ? "❄ " + T.frozen : n + " " + T.answers));
+    heat.appendChild(c);
+  });
+  heat.scrollLeft = heat.scrollWidth;
+
+  // ---------- forecast bars
+  const fc = document.getElementById("forecast"), fmax = Math.max.apply(null, DATA.forecast.map(f => f.due));
+  if (!fmax) fc.innerHTML = `<div class="empty">${T.forecastEmpty}</div>`;
+  else {
+    const bars = document.createElement("div"), xl = document.createElement("div");
+    bars.className = "bars"; xl.className = "xl";
+    DATA.forecast.forEach((f, i) => {
+      const col = document.createElement("div");
+      col.innerHTML = (i === 0 || f.due === fmax ? `<b>${f.due}</b>` : "") + `<i style="height:${Math.round(84 * f.due / fmax)}%"></i>`;
+      hover(col, (i === 0 ? T.today : fmt(f.date, { weekday: "short", day: "numeric", month: "short" })) + " · " + f.due + " " + T.reviews);
+      bars.appendChild(col);
+      const s = document.createElement("span");
+      s.textContent = i === 0 ? T.today : d8(f.date).toLocaleDateString(loc, { weekday: "narrow" });
+      if (i === 0) s.className = "t";
+      xl.appendChild(s);
+    });
+    fc.appendChild(bars); fc.appendChild(xl);
+  }
+
+  // ---------- accuracy line
+  const tr = document.getElementById("trend"), pts = DATA.trend;
+  if (!pts.length) tr.innerHTML = `<div class="empty">${T.trendEmpty}</div>`;
+  else {
+    const W = 640, H = 170, L = 34, R = 12, Tp = 10, B = 24;
+    const x = i => pts.length === 1 ? (L + W - R) / 2 : L + i * (W - L - R) / (pts.length - 1);
+    const y = v => Tp + (100 - v) * (H - Tp - B) / 100;
+    let s = `<svg class="line" viewBox="0 0 ${W} ${H}" role="img" aria-label="${T.trend}">`;
+    [0, 50, 100].forEach(v => { s += `<line class="g" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}%</text>`; });
+    s += `<line class="x" id="xh" y1="${Tp}" y2="${H - B}"/>`;
+    s += `<path class="l" d="${pts.map((p, i) => (i ? "L" : "M") + x(i) + " " + y(p.accuracy)).join(" ")}"/>`;
+    pts.forEach((p, i) => { if (pts.length <= 14 || i === pts.length - 1) s += `<circle class="p" cx="${x(i)}" cy="${y(p.accuracy)}" r="4"/>`; });
+    s += `<text x="${x(0)}" y="${H - 6}" text-anchor="${pts.length === 1 ? "middle" : "start"}">${fmt(pts[0].date)}</text>`;
+    if (pts.length > 1) s += `<text x="${x(pts.length - 1)}" y="${H - 6}" text-anchor="end">${fmt(pts[pts.length - 1].date)}</text>`;
+    s += `<rect id="hit" x="${L}" y="0" width="${W - L - R}" height="${H - B}" fill="transparent"/></svg>`;
+    tr.innerHTML = s;
+    const hit = document.getElementById("hit"), xh = document.getElementById("xh");
+    hit.addEventListener("mousemove", e => {
+      const r = hit.getBoundingClientRect();
+      const i = pts.length === 1 ? 0 : Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / r.width * (pts.length - 1))));
+      xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.style.visibility = "visible";
+      showTip(e, fmt(pts[i].date) + " · " + pts[i].accuracy + "% · " + pts[i].answers + " " + T.answers);
+    });
+    hit.addEventListener("mouseleave", () => { xh.style.visibility = "hidden"; hideTip(); });
+  }
+
+  // ---------- achievements
+  document.getElementById("ach").innerHTML = DATA.achievements.map(a =>
+    `<div class="${a.date ? "" : "lock"}"><span class="ic">${a.date ? a.icon : "🔒"}</span><b>${esc(a.name)}</b><span>${a.date ? fmt(a.date) : esc(a.description)}</span></div>`).join("");
+
+  // ---------- tables
+  const table = (head, rows) => `<table><thead><tr>${head.map(h => `<th class="${h[1] || ""}">${h[0]}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  document.getElementById("mocks").innerHTML = DATA.mocks.length
+    ? table([[T.date], [T.score, "n"], ["%", "n"]], DATA.mocks.slice().reverse().map(m => `<tr><td>${fmt(m.date)}</td><td class="n">${m.score}/${m.total}</td><td class="n">${m.pct}%</td></tr>`))
+    : `<div class="empty">${T.mocksEmpty}</div>`;
+  document.getElementById("sources").innerHTML = DATA.sources.length
+    ? table([[T.file], [T.pages, "n"], [T.added, "n"]], DATA.sources.map(s => `<tr><td title="${esc(s.summary)}">${esc(s.name)}<div style="color:var(--muted);font-size:12px">${esc(s.file)}</div></td><td class="n">${s.pages == null ? "—" : esc(s.pages)}</td><td class="n">${s.added ? fmt(s.added) : ""}</td></tr>`))
+    : `<div class="empty">${T.sourcesEmpty}</div>`;
+  document.getElementById("sessions").innerHTML = DATA.sessions.length
+    ? table([[T.date], [T.kind], [T.minutes, "n"], [T.correct, "n"], [T.xp, "n"]], DATA.sessions.map(s => `<tr><td>${fmt(s.date)}</td><td>${s.kind === "mock" ? T.mock : T.study}</td><td class="n">${s.minutes || "—"}</td><td class="n">${s.correct}/${s.answers}</td><td class="n">+${s.xp}</td></tr>`))
+    : `<div class="empty">${T.noAnswers}</div>`;
+
+  // ---------- theme toggle
+  const root = document.documentElement;
+  try { const saved = localStorage.getItem("le-theme"); if (saved) root.dataset.theme = saved; } catch (e) {}
+  document.getElementById("theme").addEventListener("click", () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("le-theme", root.dataset.theme); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

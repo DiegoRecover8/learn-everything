@@ -1,0 +1,22 @@
+{
+  "name": "learn-everything",
+  "owner": { "name": "DiegoRecover8" },
+  "metadata": {
+    "description": "Single-plugin marketplace hosting Learn Everything, an exam study companion for Claude Code.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "learn-everything",
+      "source": "./",
+      "description": "Study for any exam from your own materials: roadmap, daily plan, quizzes, mock exams, streaks, achievements and a local dashboard. Run /learn.",
+      "category": "education",
+      "tags": ["education", "exam", "study", "spaced-repetition", "quiz", "gamification"],
+      "homepage": "https://github.com/DiegoRecover8/learn-everything",
+      "repository": "https://github.com/DiegoRecover8/learn-everything",
+      "license": "MIT",
+      "author": { "name": "DiegoRecover8", "url": "https://github.com/DiegoRecover8" },
+      "version": "0.1.0"
+    }
+  ]
+}
