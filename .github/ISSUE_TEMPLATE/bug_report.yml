@@ -1,0 +1,39 @@
+name: 🐛 Bug report
+description: Something does not work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report! Please remove anything personal from notes, file names or data you paste here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. /learn:add ~/Documents/notes.pdf
+        2. ...
+  - type: textarea
+    id: output
+    attributes:
+      label: Error message or output
+      description: Any `{"error": ...}` line or message you saw.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Learn Everything version
+      description: Output of `python3 scripts/le.py --version`, or the version in `/plugin`.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: System
+      placeholder: macOS 15, Python 3.12, Claude Code 2.x (terminal / desktop app / IDE)

@@ -4,7 +4,19 @@ The daily session: review what is due, learn what is new, practise it, record ev
 
 Also read `references/exercises.md` (how to ask and grade) and, if there is a new topic today, `references/teaching.md` (how to explain).
 
-## 1. Get today's session
+## 1. Recap, then get today's session
+
+Open with a short recap built from the `le.py status` you already ran, so the learner remembers where they are. Four or five lines at most, only the lines that have data:
+
+```
+📚 Física II — 24 days to go · 🔥 8-day streak · ⭐ Level 8
+📖 Last time (yesterday): Gauss's law · 8/10 correct
+🗺️ 11 of 15 topics studied, 3 mastered
+💪 Strong: Coulomb's law · 🎯 To improve: Electric potential
+📅 Today: 12 reviews + Faraday's law
+```
+
+Take every number from `status` (`plan.days_left`, `streak`, `level`, `topics`, `recap.last_session`, `recap.strong`, `recap.weak`, `recap.next_topic`). On the very first session there is nothing to recap: just say what today holds. Then:
 
 ```bash
 le.py next            # today's plan
@@ -16,9 +28,7 @@ The output gives counts only. Open `session_file` with the **Read tool**: it hol
 - `learner`, `exam`: language, education level, exam type, goal.
 - `plan`: `days_left`, `phase` (`learn`, `review`, `exam_day`, `past`), `overload`.
 - `reviews`: questions due today.
-- `new_topics`: topics to learn today, each with `notes_files` (read these with the Read tool) and `sources`.
-
-Open with one or two lines: days left, streak if you know it, and what today holds ("12 reviews and one new topic: Gauss's law").
+- `new_topics`: topics to learn today, each with `concepts`, `sources` and `notes_cmd`.
 
 ## 2. Review
 
@@ -30,7 +40,7 @@ Keep it moving: short feedback when the answer is right, a real explanation when
 
 For each topic in `new_topics`:
 
-1. Read its `notes_files`, focusing on the pages named in `sources`.
+1. Run its `notes_cmd` (`le.py notes <topic id>`): it prints only the pages of the notes named in `sources`. Read the whole notes file (`notes_files`) only if that excerpt is missing something you need.
 2. Explain it following `teaching.md`.
 3. Practise it right away with **5 to 8 new questions** you write from the notes, asked one at a time. Mix the types, favouring the ones that match `exam.exam_type` (see `exercises.md`). Go from easy to hard.
 4. Keep each question you asked, with its answer and the quality the learner got, to send as `new_cards`.
@@ -85,6 +95,6 @@ Finish with one honest sentence on what went well and one on what to watch. Thre
 - **Nothing due and no new topic**: the goal is already met. Offer `--extra`, a mock exam, or rest.
 - **`phase` is `review`**: all topics are studied. Sessions are reviews only; suggest a mock exam every few days.
 - **`phase` is `exam_day`**: a light warm-up of the weakest questions, no new content, and good luck.
-- **`phase` is `past`**: ask how it went, and whether to set a new date (`/learn setup`) or archive the exam (`/learn data`).
+- **`phase` is `past`**: ask how it went, and whether to set a new date (`/learn:setup`) or archive the exam (`/learn:data`).
 - **`overload` is true**: say once that the plan is tight, and suggest more daily time or dropping low-weight topics.
 - **The learner asks a question mid-session**: answer it from the notes, then return to where you were.

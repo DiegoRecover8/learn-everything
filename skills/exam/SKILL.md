@@ -1,12 +1,22 @@
+---
+name: exam
+description: Learn Everything — mock exam under exam conditions, with a mark and a breakdown by topic at the end.
+argument-hint: "[number of questions]"
+disable-model-invocation: true
+allowed-tools: Read, Write, Bash, AskUserQuestion
+---
+
 # Mock exam
 
-A rehearsal under exam conditions: no feedback until the end, then a mark and a breakdown. Also read `references/exercises.md` for how to ask and grade.
+A rehearsal under exam conditions: no feedback until the end, then a mark and a breakdown.
+
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Also read `../learn/references/exercises.md` for how to ask and grade. Run `le.py status` first for the learner's language.
 
 ## 1. Agree the format
 
-Ask how many questions (10, 20 or 30; default 20) and whether they want to time themselves. If the learner has told you the real exam format, mirror it.
+Ask with AskUserQuestion how many questions (10, 20 or 30; 20 recommended) and whether they want to time themselves. If the learner has told you the real exam format, mirror it.
 
-A mock exam needs studied topics. If none is studied yet, say so and offer a study session instead.
+A mock exam needs studied topics. If none is studied yet, say so and offer a study session (`/learn`) instead.
 
 ## 2. Prepare
 
@@ -18,9 +28,9 @@ Open `session_file` with the **Read tool** (it holds the answers; never print it
 
 - `questions`: chosen from the question bank, weighted towards important topics and weak spots.
 - `missing`: how many are still needed if the bank is too small.
-- `topics`: the studied topics, with weight, status and `notes_files`.
+- `topics`: the studied topics, with weight and status.
 
-If `missing` is more than 0, write that many new questions from the notes of the studied topics, giving more to topics with a higher weight or a weaker status. Use the exam's own question types. Mix them in with the rest.
+If `missing` is more than 0, write that many new questions, giving more to topics with a higher weight or a weaker status. Get the material with `le.py notes <topic id>` (only the pages of that topic). Use the exam's own question types. Mix them in with the rest.
 
 ## 3. Run it
 

@@ -29,7 +29,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 TAG = "[Learn Everything]"
 
 SUPPORTED = {
@@ -53,41 +53,17 @@ XP_TOPIC = 20
 XP_GOAL = 30
 XP_MOCK = 50
 
-# id, icon, {lang: (name, description)}
+# id, icon. Names and descriptions live in scripts/i18n/<lang>.json
 ACHIEVEMENTS = [
-    ("first_session", "🎯", {"en": ("First step", "Complete your first session"),
-                             "es": ("Primer paso", "Completa tu primera sesión")}),
-    ("streak_3", "🔥", {"en": ("Warming up", "3-day streak"),
-                        "es": ("Calentando", "Racha de 3 días")}),
-    ("streak_7", "🔥", {"en": ("One full week", "7-day streak"),
-                        "es": ("Semana completa", "Racha de 7 días")}),
-    ("streak_14", "🔥", {"en": ("Unstoppable", "14-day streak"),
-                         "es": ("Imparable", "Racha de 14 días")}),
-    ("streak_30", "🏆", {"en": ("Habit formed", "30-day streak"),
-                         "es": ("Hábito creado", "Racha de 30 días")}),
-    ("answers_50", "✏️", {"en": ("Getting serious", "Answer 50 questions"),
-                          "es": ("Esto va en serio", "Responde 50 preguntas")}),
-    ("answers_200", "✏️", {"en": ("Hard worker", "Answer 200 questions"),
-                           "es": ("Currante", "Responde 200 preguntas")}),
-    ("answers_500", "🏆", {"en": ("Question machine", "Answer 500 questions"),
-                           "es": ("Máquina de preguntas", "Responde 500 preguntas")}),
-    ("perfect_session", "💎", {"en": ("Flawless", "5+ answers in a session, all correct"),
-                               "es": ("Impecable", "5 o más respuestas en una sesión, todas bien")}),
-    ("topic_mastered", "🌟", {"en": ("First mastery", "Master your first topic"),
-                              "es": ("Primer dominio", "Domina tu primer tema")}),
-    ("unit_complete", "📦", {"en": ("Unit done", "Study every topic of a unit"),
-                             "es": ("Unidad completada", "Estudia todos los temas de una unidad")}),
-    ("halfway", "⛰️", {"en": ("Halfway there", "Study 50% of the roadmap"),
-                       "es": ("Medio camino", "Estudia el 50 % del roadmap")}),
-    ("roadmap_complete", "🗺️", {"en": ("Whole map", "Study 100% of the roadmap"),
-                                "es": ("Mapa completo", "Estudia el 100 % del roadmap")}),
-    ("first_mock", "📝", {"en": ("Dress rehearsal", "Finish your first mock exam"),
-                          "es": ("Ensayo general", "Termina tu primer simulacro")}),
-    ("mock_80", "🥇", {"en": ("Exam ready", "Score 80% or more in a mock exam"),
-                       "es": ("Listo para el examen", "Saca un 80 % o más en un simulacro")}),
-    ("comeback", "💪", {"en": ("Comeback", "Nail a question you had failed twice or more"),
-                        "es": ("Remontada", "Clava una pregunta que habías fallado dos o más veces")}),
+    ("first_session", "🎯"), ("streak_3", "🔥"), ("streak_7", "🔥"), ("streak_14", "🔥"),
+    ("streak_30", "🏆"), ("answers_50", "✏️"), ("answers_200", "✏️"), ("answers_500", "🏆"),
+    ("perfect_session", "💎"), ("topic_mastered", "🌟"), ("unit_complete", "📦"), ("halfway", "⛰️"),
+    ("roadmap_complete", "🗺️"), ("first_mock", "📝"), ("mock_80", "🥇"), ("comeback", "💪"),
 ]
+EDU_LEVELS = ("secondary", "university", "postgraduate", "professional")
+FIND_DIRS = ("Downloads", "Desktop", "Documents")
+FIND_SKIP = {"node_modules", "Library", "Applications", "venv", ".venv", "__pycache__", "site-packages"}
+I18N_DIR = Path(__file__).resolve().parent / "i18n"
 
 
 # ----------------------------------------------------------------------------
@@ -116,7 +92,8 @@ def parse_date(value, field="date"):
 
 
 def out(obj):
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=1) + "\n")
+    """Compact JSON on stdout: it goes straight into the model's context."""
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
 def load(path, default=None):
@@ -159,9 +136,63 @@ def slugify(text):
     return text[:60] or "exam"
 
 
+_I18N = {}
+
+
+def i18n():
+    """All language packs in scripts/i18n, keyed by code (en, es, ...)."""
+    if not _I18N:
+        for p in sorted(I18N_DIR.glob("*.json")):
+            try:
+                _I18N[p.stem] = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass
+    return _I18N
+
+
+def lang_code(text):
+    """Map a language as the learner wrote it ("Español", "es", "🇫🇷 Français") to a pack code."""
+    t = re.sub(r"[^\w\s-]", "", str(text or ""), flags=re.U).strip().lower()
+    packs = i18n()
+    if t[:2] in packs and (len(t) == 2 or t[2:3] in ("-", "_")):
+        return t[:2]
+    first = t.split()[0] if t.split() else ""
+    for code, pack in packs.items():
+        names = [str(pack.get("name", "")).lower()] + [str(a).lower() for a in pack.get("aliases", [])]
+        if t in names or first in names:
+            return code
+    return "en"
+
+
 def lang_of(profile):
-    lang = str((profile or {}).get("language", "")).strip().lower()
-    return "es" if lang[:2] == "es" or lang.startswith("spa") or "castellano" in lang else "en"
+    return lang_code((profile or {}).get("language", ""))
+
+
+def texts(lang, section):
+    """One section of a language pack, with English filling any gap."""
+    packs = i18n()
+    merged = dict(packs.get("en", {}).get(section, {}))
+    merged.update(packs.get(lang, {}).get(section, {}))
+    return merged
+
+
+def env_lang():
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        val = os.environ.get(var, "")
+        if val and val[:2].lower() in i18n():
+            return val[:2].lower()
+    return "en"
+
+
+def suggested_name():
+    try:
+        import pwd
+        full = pwd.getpwuid(os.getuid()).pw_gecos.split(",")[0].strip()
+        if full:
+            return full
+    except Exception:
+        pass
+    return os.environ.get("USER") or os.environ.get("USERNAME") or ""
 
 
 def sha256(path):
@@ -183,14 +214,14 @@ def profile_path():
 def get_profile(required=True):
     p = load(profile_path(), default={})
     if not p and required:
-        raise LEError("no profile yet - run /learn setup")
+        raise LEError("no profile yet - run /learn:setup")
     return p
 
 
 def exam_dir(profile, slug=None):
     slug = slug or profile.get("active_exam")
     if not slug:
-        raise LEError("no active exam - run /learn setup")
+        raise LEError("no active exam - run /learn:setup")
     d = home() / slug
     if not (d / "exam.json").exists():
         raise LEError("exam %r not found" % slug)
@@ -460,11 +491,11 @@ def check_achievements(profile, ctx):
         "mock_80": ctx["mock"] and ctx["mock_pct"] >= 80,
         "comeback": ctx["comeback"],
     }
-    lang, new = lang_of(profile), []
-    for aid, icon, names in ACHIEVEMENTS:
+    names, new = texts(lang_of(profile), "achievements"), []
+    for aid, icon in ACHIEVEMENTS:
         if rules.get(aid) and aid not in have:
             profile["achievements"].append({"id": aid, "date": ctx["date"]})
-            new.append({"id": aid, "icon": icon, "name": names[lang][0], "description": names[lang][1]})
+            new.append({"id": aid, "icon": icon, "name": names[aid][0], "description": names[aid][1]})
     return new
 
 
@@ -520,7 +551,17 @@ def cmd_init(args):
             exam = load(d / "exam.json")
             backup("init", d)
             apply_exam_fields(exam, ex)
-            save(d / "exam.json", exam)
+            if ex.get("rename") and ex.get("name") and slugify(ex["name"]) != slug:
+                new_slug = slugify(ex["name"])
+                if (home() / new_slug).exists():
+                    raise LEError("an exam folder named %r already exists" % new_slug)
+                exam["slug"] = new_slug
+                save(d / "exam.json", exam)
+                os.replace(str(d), str(home() / new_slug))
+                slug, d = new_slug, home() / new_slug
+                result["renamed_to"] = new_slug
+            else:
+                save(d / "exam.json", exam)
             result["exam"] = "updated"
         else:
             if not ex.get("name"):
@@ -541,6 +582,42 @@ def cmd_init(args):
     save(profile_path(), profile)
     result["home"] = str(home())
     out(result)
+
+
+def topic_accuracy(tcards):
+    hist = [h["q"] for c in tcards for h in c.get("history", [])]
+    if not hist:
+        return None, 0
+    return int(round(100.0 * sum(1 for q in hist if q >= 3) / len(hist))), len(hist)
+
+
+def focus_topics(exam, cards, limit=2):
+    """Strongest and weakest studied topics, from their answer history."""
+    by, rows = cards_by_topic(cards), []
+    for _, t in all_topics(exam):
+        acc, n = topic_accuracy(by.get(t["id"], []))
+        if t.get("studied") and acc is not None and n >= 3:
+            rows.append({"id": t["id"], "name": t["name"], "accuracy": acc, "answers": n})
+    strong = [r for r in sorted(rows, key=lambda r: (-r["accuracy"], -r["answers"])) if r["accuracy"] >= 80]
+    weak = [r for r in sorted(rows, key=lambda r: (r["accuracy"], -r["answers"])) if r["accuracy"] < 70]
+    return strong[:limit], weak[:limit]
+
+
+def recap(exam, cards, log):
+    """What a returning learner needs to hear first: last session, strengths, gaps, next topic."""
+    names = {t["id"]: t["name"] for _, t in all_topics(exam)}
+    studied = sorted((t for _, t in all_topics(exam) if t.get("studied")), key=lambda t: t["studied"])
+    strong, weak = focus_topics(exam, cards)
+    last = None
+    if log:
+        e = log[-1]
+        last = {"date": e.get("date"), "kind": e.get("kind", "study"), "answers": e.get("answers", 0),
+                "correct": e.get("correct", 0), "topics": [names[x] for x in e.get("topics", []) if x in names]}
+        if e.get("mock"):
+            last["mock_pct"] = e["mock"].get("pct")
+    return {"last_session": last, "recent_topics": [t["name"] for t in studied[-3:]],
+            "strong": [r["name"] for r in strong], "weak": [r["name"] for r in weak],
+            "next_topic": next((t["name"] for _, t in all_topics(exam) if not t.get("studied")), None)}
 
 
 def summary(profile, d):
@@ -568,44 +645,54 @@ def summary(profile, d):
         "cards": len(cards["cards"]),
         "sources": len(index["sources"]),
         "sources_missing_notes": missing,
+        "recap": recap(exam, cards, log),
         "next_action": action,
     }
 
 
 def hook_lines(profile, info):
-    es = lang_of(profile) == "es"
-    plan, name = info["plan"], info["exam"]["name"]
-    left = plan["days_left"]
+    T = texts(lang_of(profile), "hook")
+    plan, name, left = info["plan"], info["exam"]["name"], info["plan"]["days_left"]
+    plural = lambda n: T["day"] if n == 1 else T["days"]
     if left is None:
-        head = "📚 %s" % name
+        lines = [T["exam_nodate"].format(exam=name)]
     elif left > 0:
-        head = ("📚 %s — faltan %d días para el examen" if es else "📚 %s — %d days to the exam") % (name, left)
-    elif left == 0:
-        head = ("📚 %s — ¡el examen es hoy!" if es else "📚 %s — exam day!") % name
+        lines = [T["exam_days"].format(exam=name, n=left, days=plural(left))]
     else:
-        head = ("📚 %s — examen ya pasado" if es else "📚 %s — exam date has passed") % name
-    lv = level_info(profile.get("xp", 0))["level"]
-    n = streak(profile)
-    if es:
-        line2 = "🔥 Racha: %d %s · ⭐ Nivel %d" % (n, "día" if n == 1 else "días", lv)
-    else:
-        line2 = "🔥 Streak: %d %s · ⭐ Level %d" % (n, "day" if n == 1 else "days", lv)
+        lines = [(T["exam_today"] if left == 0 else T["exam_past"]).format(exam=name)]
+    lv, n = level_info(profile.get("xp", 0)), streak(profile)
+    lines.append(T["streak"].format(n=n, days=plural(n), level=lv["level"], xp=lv["xp"]))
+    tp, rc = info["topics"], info["recap"]
+    if tp["studied"]:
+        lines.append(T["progress"].format(studied=tp["studied"], total=tp["total"], mastered=tp["mastered"]))
+    last = rc.get("last_session")
+    if last and last.get("date"):
+        ago = (today() - parse_date(last["date"])).days
+        when = T["when_today"] if ago <= 0 else T["when_yesterday"] if ago == 1 else T["when_ago"].format(n=ago)
+        parts = []
+        if last.get("mock_pct") is not None:
+            parts.append(T["mock"].format(pct=last["mock_pct"]))
+        elif last.get("topics"):
+            parts.append(", ".join(last["topics"]))
+        if last.get("answers"):
+            parts.append(T["score"].format(correct=last["correct"], answers=last["answers"]))
+        if parts:
+            lines.append(T["last"].format(when=when, what=" · ".join(parts)))
+    focus = []
+    if rc.get("strong"):
+        focus.append(T["strong"].format(list=", ".join(rc["strong"])))
+    if rc.get("weak"):
+        focus.append(T["weak"].format(list=", ".join(rc["weak"])))
+    if focus:
+        lines.append(" · ".join(focus))
     action = info["next_action"]
-    if action == "add":
-        line3 = "📎 Añade tus materiales con /learn add <ruta>" if es else "📎 Add your materials with /learn add <path>"
-    elif action == "roadmap":
-        line3 = "🗺️ Falta crear el roadmap — ejecuta /learn" if es else "🗺️ Roadmap not built yet — run /learn"
-    elif action == "done":
-        line3 = "✅ Meta de hoy cumplida" if es else "✅ Today's goal is done"
+    if action in ("add", "roadmap", "done"):
+        lines.append(T[action])
     else:
         r, t = plan["reviews_today_remaining"], plan["new_today_remaining"]
-        if es:
-            line3 = "📅 Hoy: %d %s + %d %s — ejecuta /learn" % (
-                r, "repaso" if r == 1 else "repasos", t, "tema nuevo" if t == 1 else "temas nuevos")
-        else:
-            line3 = "📅 Today: %d %s + %d new %s — run /learn" % (
-                r, "review" if r == 1 else "reviews", t, "topic" if t == 1 else "topics")
-    return [head, line2, line3]
+        lines.append(T["today"].format(reviews=T["review_1" if r == 1 else "review_n"].format(n=r),
+                                       topics=T["topic_1" if t == 1 else "topic_n"].format(n=t)))
+    return lines
 
 
 def cmd_status(args):
@@ -613,7 +700,8 @@ def cmd_status(args):
         try:
             profile = get_profile(required=False)
             if not profile or not profile.get("active_exam"):
-                print("%s 🎓 Run /learn setup to prepare your first exam" % TAG)
+                lang = lang_of(profile) if profile else env_lang()
+                print("%s %s" % (TAG, texts(lang, "hook")["setup"]))
                 return
             info = summary(profile, exam_dir(profile))
             for line in hook_lines(profile, info):
@@ -623,7 +711,10 @@ def cmd_status(args):
         return
     profile = get_profile(required=False)
     if not profile:
-        out({"next_action": "setup", "home": str(home())})
+        out({"next_action": "setup", "home": str(home()),
+             "suggest": {"name": suggested_name(), "language": i18n().get(env_lang(), {}).get("name", "English")},
+             "languages": [{"code": c, "name": p.get("name"), "flag": p.get("flag")} for c, p in i18n().items()],
+             "education_levels": list(EDU_LEVELS)})
         return
     res = {"learner": {"name": profile.get("name"), "language": profile.get("language"),
                        "education_level": profile.get("education_level")},
@@ -680,7 +771,7 @@ def cmd_source_check(args):
     profile = get_profile()
     d = exam_dir(profile, args.exam)
     index = load(d / "sources" / "index.json")
-    known = {s["sha256"]: s for s in index["sources"]}
+    known = {s["sha256"]: s for s in index["sources"] if s.get("sha256")}
     rows = []
     for p in expand_paths(args.paths):
         row = {"path": str(p)}
@@ -698,8 +789,9 @@ def cmd_source_check(args):
             else:
                 row.update(status="new", read_with=READ_WITH[kind])
         rows.append(row)
-    out({"files": rows, "new": sum(1 for r in rows if r["status"] == "new"),
-         "known": sum(1 for r in rows if r["status"] == "known")})
+    fresh = [r for r in rows if r["status"] == "new"]
+    out({"files": rows, "new": len(fresh), "known": sum(1 for r in rows if r["status"] == "known"),
+         "new_size_kb": sum(r["size_kb"] for r in fresh)})
 
 
 def cmd_source_add(args):
@@ -707,6 +799,21 @@ def cmd_source_add(args):
     profile = get_profile()
     d = exam_dir(profile, args.exam)
     index = load(d / "sources" / "index.json")
+    meta = {k: data[k] for k in ("title", "summary", "pages", "topics") if k in data}
+    if data.get("pasted"):
+        # material pasted or attached in the chat, with no file on disk: no hash, no dedupe
+        if not data.get("title"):
+            raise LEError("a pasted source needs a title")
+        sid = "s%d" % index["next_id"]
+        index["next_id"] += 1
+        entry = {"id": sid, "sha256": None, "path": None, "name": str(data["title"]), "type": "pasted",
+                 "size_kb": 0, "added": today().isoformat(), "notes": "sources/%s.md" % sid}
+        entry.update(meta)
+        index["sources"].append(entry)
+        backup("source", d)
+        save(d / "sources" / "index.json", index)
+        out({"status": "added", "id": sid, "notes_path": str(d / entry["notes"])})
+        return
     p = Path(str(data.get("path", ""))).expanduser()
     if not p.is_file():
         raise LEError("path not found: %s" % p)
@@ -714,7 +821,6 @@ def cmd_source_add(args):
     if not kind:
         raise LEError("unsupported file type: %s" % p.suffix)
     digest = sha256(p)
-    meta = {k: data[k] for k in ("title", "summary", "pages", "topics") if k in data}
     for s in index["sources"]:
         if s["sha256"] == digest:
             s.update(meta)
@@ -764,6 +870,116 @@ def cmd_source_remove(args):
     index["sources"] = keep
     save(d / "sources" / "index.json", index)
     out({"removed": args.id, "note": "cards and roadmap were left untouched"})
+
+
+def cmd_find(args):
+    """Recent study files in the usual folders, so the learner can pick instead of typing paths."""
+    roots = [Path(x).expanduser() for x in args.dirs] if args.dirs else \
+        [Path.home() / n for n in FIND_DIRS if (Path.home() / n).is_dir()]
+    known = set()
+    profile = get_profile(required=False)
+    if profile and profile.get("active_exam") and (home() / profile["active_exam"]).is_dir():
+        index = load(home() / profile["active_exam"] / "sources" / "index.json", default={"sources": []})
+        known = {s.get("path") for s in index["sources"] if s.get("path")}
+    cutoff = dt.datetime.now().timestamp() - args.days * 86400
+    found = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        base = len(root.parts)
+        for dirpath, dirnames, filenames in os.walk(str(root)):
+            depth = len(Path(dirpath).parts) - base
+            dirnames[:] = [n for n in dirnames if not n.startswith(".") and n not in FIND_SKIP
+                           and not n.endswith((".app", ".photoslibrary")) and depth < args.depth]
+            for name in filenames:
+                p = Path(dirpath) / name
+                if name.startswith(".") or p.suffix.lower() not in SUPPORTED:
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                if st.st_mtime >= cutoff:
+                    found.append((st.st_mtime, p, st.st_size))
+    found.sort(key=lambda x: -x[0])
+    rows = [{"path": str(p), "type": SUPPORTED[p.suffix.lower()], "size_kb": int(math.ceil(size / 1024)),
+             "modified": dt.date.fromtimestamp(mtime).isoformat(), "known": str(p.resolve()) in known}
+            for mtime, p, size in found[:args.limit]]
+    out({"files": rows, "searched": [str(r) for r in roots], "more": max(0, len(found) - args.limit)})
+
+
+PAGE_MARK = re.compile(r"\[\s*(?:p|pp|pg|pág|pag|page|pages|slide|slides|diapositiva|diapo|folie)\.?\s*(\d+)", re.I)
+REF = re.compile(r"\s*(s\d+)(?:\D*?(\d+)(?:\s*[-–]\s*(\d+))?)?")
+
+
+def notes_excerpt(text, ranges):
+    """Lines of the notes whose page mark falls in one of the ranges, with their headings.
+    A line takes the page of its own mark, or of the last mark above it."""
+    lines, page, keep = text.split("\n"), None, []
+    for i, line in enumerate(lines):
+        marks = [int(m) for m in PAGE_MARK.findall(line)]
+        if marks:
+            page = marks[0]
+        elif re.match(r"#+\s", line):
+            continue  # an unmarked heading belongs to what follows; added below with its section
+        if page is not None and any(a <= page <= b for a, b in ranges):
+            keep.append(i)
+    if not keep:
+        return None
+    chosen, heads = set(keep), {}
+    for i, line in enumerate(lines):
+        m = re.match(r"(#+)\s", line)
+        if m:
+            level = len(m.group(1))
+            heads = {k: v for k, v in heads.items() if k < level}
+            heads[level] = i
+        if i in keep:
+            chosen.update(heads.values())
+    out_lines, prev = [], None
+    for i in sorted(chosen):
+        if prev is not None and i != prev + 1:
+            out_lines.append("…")
+        out_lines.append(lines[i])
+        prev = i
+    return "\n".join(out_lines)
+
+
+def cmd_notes(args):
+    """Print only the part of the notes a topic needs, instead of whole files."""
+    profile = get_profile()
+    d = exam_dir(profile, args.exam)
+    refs = args.ref
+    if args.topic:
+        exam = load(d / "exam.json")
+        t = next((t for _, t in all_topics(exam) if t["id"] == args.topic), None)
+        if t is None:
+            raise LEError("unknown topic %r" % args.topic)
+        refs = refs + t.get("sources", [])
+    if not refs:
+        raise LEError("give a topic id or --ref \"s1 p.3-8\"")
+    wanted = {}
+    for ref in refs:
+        m = REF.match(str(ref))
+        if not m:
+            continue
+        rng = wanted.setdefault(m.group(1), [])
+        if m.group(2) is None:
+            rng.append(None)
+        else:
+            a = int(m.group(2))
+            rng.append((a, int(m.group(3)) if m.group(3) else a))
+    chunks = []
+    for sid, ranges in wanted.items():
+        path = d / "sources" / (sid + ".md")
+        if not path.exists():
+            chunks.append("=== %s: no notes file ===" % sid)
+            continue
+        text = path.read_text(encoding="utf-8")
+        part = None if None in ranges else notes_excerpt(text, ranges)
+        label = "whole file" if part is None else "pages " + ", ".join(
+            "%d-%d" % r if r[0] != r[1] else str(r[0]) for r in ranges)
+        chunks.append("=== %s (%s) · %s ===\n%s" % (sid, label, path, (part if part is not None else text).strip()))
+    sys.stdout.write("\n\n".join(chunks) + "\n")
 
 
 # ----------------------------------------------------------------------------
@@ -908,9 +1124,14 @@ def cmd_roadmap_set(args):
                 weight = float(t.get("weight", 1))
             except (TypeError, ValueError):
                 raise LEError("topic weight must be a number")
+            concepts = t.get("concepts", [])
+            if not isinstance(concepts, list):
+                raise LEError("topic concepts must be a list of short strings")
             topics.append({"id": tid, "name": t["name"], "weight": max(0.1, weight),
                            "sources": [str(s) for s in t.get("sources", [])],
-                           "summary": str(t.get("summary", "")), "studied": studied})
+                           "summary": str(t.get("summary", "")),
+                           "concepts": [str(c).strip()[:60] for c in concepts if str(c).strip()][:8],
+                           "studied": studied})
         units.append({"id": "u%d" % ui, "name": u["name"], "topics": topics})
     by = cards_by_topic(cards)
     lost = [tid for tid in by if tid not in used]
@@ -1019,7 +1240,8 @@ def cmd_next(args):
             break
         if not t.get("studied"):
             new_topics.append({"id": t["id"], "name": t["name"], "unit": u["name"], "weight": t["weight"],
-                               "summary": t.get("summary", ""), "sources": t["sources"],
+                               "summary": t.get("summary", ""), "concepts": t.get("concepts", []),
+                               "sources": t["sources"], "notes_cmd": "le.py notes %s" % t["id"],
                                "notes_files": source_notes(d, t["sources"]),
                                "existing_cards": len(by.get(t["id"], []))})
     session = session_header(profile, exam, "study")
@@ -1243,6 +1465,7 @@ def dashboard_data(profile, d):
     day = today()
     key = day.isoformat()
     lang = lang_of(profile)
+    pack = i18n().get(lang, {})
     by, st = cards_by_topic(cards), statuses(exam, cards)
     plan = make_plan(exam, cards, log, day)
     src_names = {s["id"]: s.get("title") or s["name"] for s in index["sources"]}
@@ -1252,12 +1475,11 @@ def dashboard_data(profile, d):
         topics = []
         for t in u["topics"]:
             tc = by.get(t["id"], [])
-            hist = [h["q"] for c in tc for h in c.get("history", [])]
+            acc, n_hist = topic_accuracy(tc)
             topics.append({"id": t["id"], "name": t["name"], "weight": t["weight"],
                            "status": st[t["id"]], "studied": t.get("studied"),
-                           "summary": t.get("summary", ""), "cards": len(tc), "answers": len(hist),
-                           "accuracy": int(round(100.0 * sum(1 for q in hist if q >= 3) / len(hist)))
-                           if hist else None,
+                           "summary": t.get("summary", ""), "concepts": t.get("concepts", []),
+                           "cards": len(tc), "answers": n_hist, "accuracy": acc,
                            "due": sum(1 for c in tc if c["due"] <= key),
                            "sources": [src_names.get(m.group(1), r) if m else r for r, m in
                                        ((r, re.match(r"\s*(s\d+)", r)) for r in t["sources"])]})
@@ -1283,13 +1505,33 @@ def dashboard_data(profile, d):
         forecast.append({"date": cur, "due": n})
 
     have = {a["id"]: a["date"] for a in profile.get("achievements", [])}
-    achievements = [{"id": aid, "icon": icon, "name": names[lang][0], "description": names[lang][1],
-                     "date": have.get(aid)} for aid, icon, names in ACHIEVEMENTS]
+    names = texts(lang, "achievements")
+    n_streak, n_total = streak(profile, day), len(st)
+    n_studied = sum(1 for v in st.values() if v != "new")
+    reach = {"streak_3": (n_streak, 3), "streak_7": (n_streak, 7), "streak_14": (n_streak, 14),
+             "streak_30": (n_streak, 30),
+             "answers_50": (profile.get("total_answers", 0), 50),
+             "answers_200": (profile.get("total_answers", 0), 200),
+             "answers_500": (profile.get("total_answers", 0), 500),
+             "halfway": (n_studied, max(1, int(math.ceil(n_total / 2.0)))),
+             "roadmap_complete": (n_studied, max(1, n_total))}
+    achievements = []
+    for aid, icon in ACHIEVEMENTS:
+        a = {"id": aid, "icon": icon, "name": names[aid][0], "description": names[aid][1],
+             "date": have.get(aid)}
+        if aid in reach and not a["date"]:
+            a["progress"] = [min(*reach[aid]), reach[aid][1]]
+        achievements.append(a)
+    strong, weak = focus_topics(exam, cards, limit=3)
     total_answers = sum(e.get("answers", 0) for e in log)
     total_correct = sum(e.get("correct", 0) for e in log)
+    edu = profile.get("education_level", "")
     return {
         "generated": dt.datetime.now().isoformat(timespec="minutes"), "today": key, "lang": lang,
-        "learner": {"name": profile.get("name", ""), "education_level": profile.get("education_level", "")},
+        "locale": pack.get("locale", "en-GB"), "t": texts(lang, "dashboard"),
+        "learner": {"name": profile.get("name", ""),
+                    "education_level": texts(lang, "edu").get(edu, edu)},
+        "focus": {"strong": strong, "weak": weak},
         "level": level_info(profile.get("xp", 0)), "streak": streak(profile, day),
         "studied_today": key in profile.get("study_days", []), "freezes": profile.get("freezes", 0),
         "goal_done_today": key in profile.get("goal_days", []),
@@ -1303,7 +1545,8 @@ def dashboard_data(profile, d):
                    "cards": len(cards["cards"]),
                    "topics": len(st), "studied": sum(1 for v in st.values() if v != "new"),
                    "mastered": sum(1 for v in st.values() if v == "mastered")},
-        "sources": [{"name": s.get("title") or s["name"], "file": s["name"], "type": s["type"],
+        "sources": [{"name": s.get("title") or s["name"], "file": s["name"] if s.get("path") else "",
+                     "type": s["type"],
                      "pages": s.get("pages"), "added": s.get("added"), "summary": s.get("summary", "")}
                     for s in index["sources"]],
         "sessions": [dict(e) for e in log[-12:]][::-1],
@@ -1458,6 +1701,12 @@ def build_parser():
     sp = src.add_parser("add"); sp.set_defaults(fn=cmd_source_add)
     sp = src.add_parser("list"); sp.set_defaults(fn=cmd_source_list)
     sp = src.add_parser("remove"); sp.add_argument("id"); sp.set_defaults(fn=cmd_source_remove)
+
+    sp = add("find", cmd_find, "recent study files in Downloads, Desktop, Documents")
+    sp.add_argument("dirs", nargs="*"); sp.add_argument("--days", type=int, default=120)
+    sp.add_argument("--limit", type=int, default=25); sp.add_argument("--depth", type=int, default=3)
+    sp = add("notes", cmd_notes, "the part of the notes a topic needs")
+    sp.add_argument("topic", nargs="?"); sp.add_argument("--ref", action="append", default=[])
 
     sp = add("extract", cmd_extract, "text from .docx / .pptx")
     sp.add_argument("file"); sp.add_argument("--out"); sp.add_argument("--media")

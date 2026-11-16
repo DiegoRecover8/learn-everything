@@ -77,7 +77,8 @@ class Base(unittest.TestCase):
 class TestSetup(Base):
     def test_status_without_profile(self):
         self.assertEqual(self.run_le("status")["next_action"], "setup")
-        self.assertIn("/learn setup", self.run_le("status", "--hook"))
+        self.assertIn("/learn:setup", self.run_le("status", "--hook"))
+        self.assertIn("suggest", self.run_le("status"))
 
     def test_init_creates_and_updates(self):
         r = self.init(exam_date=day(30))
@@ -491,6 +492,11 @@ class TestDashboard(Base):
         self.assertEqual(len(data["forecast"]), 14)
         self.assertEqual(len(data["achievements"]), len(le.ACHIEVEMENTS))
         self.assertEqual(data["units"][0]["topics"][0]["accuracy"], 100)
+        self.assertEqual((data["locale"], data["t"]["contentMap"], data["learner"]["education_level"]),
+                         ("es-ES", "Mapa de contenidos", "University"))
+        prog = {a["id"]: a.get("progress") for a in data["achievements"]}
+        self.assertEqual((prog["streak_3"], prog["halfway"], prog["first_session"]), ([1, 3], [1, 2], None))
+        self.assertIn("focus", data)
 
 
 class TestData(Base):
@@ -545,6 +551,154 @@ class TestData(Base):
             f.write('{"date": "2026-0')
         self.assertEqual(self.run_le("status")["cards"], 1)
         self.assertEqual(self.run_le("dashboard", "--no-open")["opened"], False)
+
+
+class TestI18n(unittest.TestCase):
+    def test_every_language_pack_is_complete(self):
+        import re as _re
+        packs = le.i18n()
+        self.assertLessEqual({"en", "es", "fr", "de", "it", "pt"}, set(packs))
+        en = packs["en"]
+        holes = lambda text: set(_re.findall(r"\{(\w+)\}", text))
+        for code, pack in packs.items():
+            for key in ("name", "flag", "locale", "aliases"):
+                self.assertIn(key, pack, code)
+            for section in ("hook", "edu", "dashboard", "achievements"):
+                self.assertEqual(set(pack[section]), set(en[section]), "%s/%s" % (code, section))
+            for k, text in pack["hook"].items():
+                self.assertEqual(holes(text), holes(en["hook"][k]), "%s hook.%s" % (code, k))
+            for aid, _ in le.ACHIEVEMENTS:
+                self.assertEqual(len(pack["achievements"][aid]), 2, "%s %s" % (code, aid))
+
+    def test_language_names_map_to_packs(self):
+        for text, code in [("Español", "es"), ("🇫🇷 Français", "fr"), ("de", "de"), ("pt-BR", "pt"),
+                           ("Deutsch (Österreich)", "de"), ("spanish", "es"), ("Italiano", "it"),
+                           ("English", "en"), ("Klingon", "en"), ("", "en")]:
+            self.assertEqual(le.lang_code(text), code, text)
+
+
+class TestRecapAndHook(Base):
+    def setUp(self):
+        super().setUp()
+        self.init(exam_date=day(30), language="Deutsch")
+        self.roadmap(4)
+
+    def test_recap_and_hook_lines(self):
+        hook = self.run_le("status", "--hook")
+        self.assertIn("noch 30 Tage bis zur Prüfung", hook)
+        self.assertNotIn("Letzte Einheit", hook)  # nothing to recap yet
+        self.run_le("record", payload={"studied_topics": ["t1"], "new_cards": [self.card("t1", 5) for _ in range(4)]})
+        self.run_le("record", payload={"studied_topics": ["t2"], "new_cards": [self.card("t2", q) for q in (1, 2, 5)]})
+        self.today = day(1)
+        rc = self.run_le("status")["recap"]
+        self.assertEqual(rc["last_session"]["topics"], ["Topic 1"])
+        self.assertEqual((rc["strong"], rc["weak"], rc["next_topic"]), (["Topic 0"], ["Topic 1"], "Topic 2"))
+        hook = self.run_le("status", "--hook").splitlines()
+        self.assertTrue(all(line.startswith("[Learn Everything] ") for line in hook))
+        text = "\n".join(hook)
+        for part in ("Fortschritt: 2/4", "Letzte Einheit (gestern): Topic 1 · 1/3 richtig",
+                     "Stark in: Topic 0", "Zu verbessern: Topic 1", "/learn:add"):
+            self.assertIn(part, text)
+
+
+class TestFindNotesPasted(Base):
+    def setUp(self):
+        super().setUp()
+        self.init()
+
+    def test_find_lists_recent_supported_files(self):
+        sub = self.files / "Physik" / "deep"
+        sub.mkdir(parents=True)
+        for name in ("a.pdf", "Physik/b.docx", "Physik/deep/c.png", "skip.exe", ".hidden.pdf"):
+            (self.files / name).write_text("x")
+        old = self.files / "old.pdf"
+        old.write_text("x")
+        os.utime(str(old), (0, 0))
+        self.run_le("source", "add", payload={"path": str(self.files / "a.pdf")})
+        r = self.run_le("find", self.files)
+        names = {Path(f["path"]).name: f["known"] for f in r["files"]}
+        self.assertEqual(names, {"a.pdf": True, "b.docx": False, "c.png": False})
+        self.assertEqual(len(self.run_le("find", self.files, "--depth", "1")["files"]), 2)
+
+    def test_notes_excerpt_by_pages(self):
+        self.run_le("source", "add", payload={"path": str(self.files / "x.txt"), "title": "X"}, ok=False)
+        (self.files / "x.txt").write_text("x")
+        sid = self.run_le("source", "add", payload={"path": str(self.files / "x.txt")})
+        Path(sid["notes_path"]).write_text("\n".join([
+            "# Chapter 1", "[p. 1] intro line", "## Part A", "[p. 3] alpha", "more alpha",
+            "[p. 4] beta", "## Part B", "[p. 6] gamma", "# Chapter 2", "[slide 9] delta"]), encoding="utf-8")
+        self.run_le("roadmap", "set", payload={"units": [{"name": "U", "topics": [
+            {"name": "A", "sources": ["s1 p.3-4"]}, {"name": "B", "sources": ["s1"]},
+            {"name": "C", "sources": ["s1 slide 9"]}]}]})
+        out = self.run_le("notes", "t1")
+        for part in ("# Chapter 1", "## Part A", "alpha", "more alpha", "beta", "pages 3-4"):
+            self.assertIn(part, out)
+        for part in ("intro line", "gamma", "Part B", "delta"):
+            self.assertNotIn(part, out)
+        self.assertIn("gamma", self.run_le("notes", "t2"))  # no pages -> whole file
+        out = self.run_le("notes", "t3")
+        self.assertIn("delta", out)
+        self.assertNotIn("alpha", out)
+        self.assertIn("unknown topic", self.run_le("notes", "t99", ok=False))
+        sess = json.loads(Path(self.run_le("next")["session_file"]).read_text(encoding="utf-8"))
+        self.assertEqual(sess["new_topics"][0]["notes_cmd"], "le.py notes t1")
+
+    def test_pasted_source(self):
+        self.assertIn("title", self.run_le("source", "add", ok=False, payload={"pasted": True}))
+        r = self.run_le("source", "add", payload={"pasted": True, "title": "Whiteboard photo"})
+        self.assertEqual(r["id"], "s1")
+        src = self.read("fisica-ii/sources/index.json")["sources"][0]
+        self.assertEqual((src["type"], src["sha256"], src["path"]), ("pasted", None, None))
+        (self.files / "n.txt").write_text("x")
+        self.assertEqual(self.run_le("source", "check", self.files)["new"], 1)
+
+    def test_rename_exam_folder(self):
+        self.run_le("source", "add", payload={"pasted": True, "title": "T"})
+        r = self.run_le("init", payload={"exam": {"slug": "fisica-ii", "name": "Física III", "rename": True}})
+        self.assertEqual((r["renamed_to"], r["slug"]), ("fisica-iii", "fisica-iii"))
+        self.assertFalse((self.home / "fisica-ii").exists())
+        self.assertEqual(self.read("profile.json")["active_exam"], "fisica-iii")
+        self.assertEqual(self.read("fisica-iii/exam.json")["slug"], "fisica-iii")
+        self.assertEqual(self.run_le("status")["sources"], 1)
+        self.run_le("init", payload={"exam": {"name": "Other"}})
+        self.assertIn("already exists", self.run_le("init", ok=False, payload={
+            "exam": {"slug": "other", "name": "Física III", "rename": True}}))
+
+    def test_roadmap_concepts(self):
+        self.run_le("roadmap", "set", payload={"units": [{"name": "U", "topics": [
+            {"name": "T", "concepts": ["c%d" % i for i in range(12)] + [" "]}]}]})
+        self.assertEqual(len(self.read("fisica-ii/exam.json")["units"][0]["topics"][0]["concepts"]), 8)
+        self.assertIn("concepts", self.run_le("roadmap", "set", ok=False, payload={
+            "units": [{"name": "U", "topics": [{"name": "T", "concepts": "a, b"}]}]}))
+
+
+class TestPluginLayout(unittest.TestCase):
+    def frontmatter(self, path):
+        text = path.read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("---\n"), path)
+        head = text.split("---\n", 2)[1]
+        return dict(line.split(": ", 1) for line in head.strip().splitlines() if ": " in line), text
+
+    def test_skills(self):
+        names = sorted(p.name for p in (ROOT / "skills").iterdir() if p.is_dir())
+        self.assertEqual(names, ["add", "dashboard", "data", "exam", "learn", "setup"])
+        for name in names:
+            meta, text = self.frontmatter(ROOT / "skills" / name / "SKILL.md")
+            self.assertEqual(meta["name"], name)
+            self.assertTrue(meta["description"].strip())
+            # only the main skill is loaded into context; the others cost nothing until typed
+            self.assertEqual(meta.get("disable-model-invocation") == "true", name != "learn", name)
+            self.assertIn('${CLAUDE_PLUGIN_ROOT}/scripts/le.py', text, name)
+            for ref in __import__("re").findall(r"`(\.\./[\w/.-]+\.md|references/[\w.-]+\.md)`", text):
+                self.assertTrue((ROOT / "skills" / name / ref).resolve().exists(), "%s -> %s" % (name, ref))
+
+    def test_versions_match(self):
+        plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        self.assertEqual(plugin["name"], "learn")
+        self.assertEqual(market["plugins"][0]["name"], "learn")
+        self.assertEqual({plugin["version"], market["plugins"][0]["version"], market["metadata"]["version"]},
+                         {le.VERSION})
 
 
 if __name__ == "__main__":

@@ -126,11 +126,56 @@ svg.line .x { stroke: var(--axis); stroke-width: 1; visibility: hidden; }
 .xl span.t { color: var(--ink); font-weight: 600; }
 .empty { color: var(--muted); font-size: 13.5px; padding: 8px 0; }
 
-.ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.ach div { border: 1px solid var(--hair); border-radius: 10px; padding: 10px; display: grid; grid-template-columns: 28px 1fr; gap: 2px 8px; align-items: center; }
-.ach .ic { font-size: 22px; grid-row: span 2; text-align: center; }
-.ach b { font-size: 13.5px; line-height: 1.2; } .ach span { font-size: 12px; color: var(--ink-2); line-height: 1.25; }
+.strip { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 16px; margin-bottom: 16px; align-items: start; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 19px; background: var(--track); border: 0; padding: 0; }
+.badge.on { background: var(--h1); }
+.badge.off { opacity: .45; filter: grayscale(1); font-size: 15px; }
+.nextach { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+.nextach .bar { flex: 1; max-width: 160px; margin: 0; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent-ink); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }
+.ach { display: none; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-top: 12px; }
+.ach.open { display: grid; }
+.ach div { border: 1px solid var(--hair); border-radius: 10px; padding: 8px 10px; display: grid; grid-template-columns: 26px 1fr; gap: 0 8px; align-items: center; }
+.ach .ic { font-size: 19px; grid-row: span 2; text-align: center; }
+.ach b { font-size: 13px; line-height: 1.2; } .ach span { font-size: 12px; color: var(--ink-2); line-height: 1.25; }
 .ach .lock { opacity: .55; } .ach .lock .ic { filter: grayscale(1); }
+.focus h3 { font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin: 0 0 6px; }
+.focus ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.focus ul:last-child { margin-bottom: 0; }
+.focus li { display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 13.5px; align-items: baseline; }
+.focus li button { background: none; border: 0; padding: 0; text-align: left; font-size: 13.5px; }
+.focus li button:hover { text-decoration: underline; }
+.focus .pct { font-variant-numeric: tabular-nums; font-weight: 600; }
+.focus .good { color: var(--good-text); } .focus .bad { color: var(--crit); }
+
+/* content map */
+.cmap-root { display: flex; justify-content: center; margin: 4px 0 0; }
+.cmap-root span { background: var(--ink); color: var(--surface); border-radius: 99px; padding: 6px 16px; font-weight: 600; font-size: 14px; max-width: 100%; text-align: center; }
+.cmap-stem { width: 2px; height: 16px; background: var(--axis); margin: 0 auto; }
+.cmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0 14px; }
+.cunit { position: relative; padding-top: 16px; min-width: 0; }
+.cunit::before { content: ""; position: absolute; top: 0; left: 50%; width: 2px; height: 16px; background: var(--axis); }
+.cunit::after { content: ""; position: absolute; top: 0; left: -7px; right: -7px; height: 2px; background: var(--axis); }
+.cunit:first-child::after { left: 50%; } .cunit:last-child::after { right: 50%; }
+.cunit:only-child::after { display: none; }
+.cunit h3 { margin: 0; font-size: 13.5px; background: var(--page); border: 1px solid var(--hair); border-radius: 10px; padding: 8px 10px; display: flex; justify-content: space-between; gap: 8px; }
+.cunit h3 em { font-style: normal; font-weight: 500; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.ctopics { list-style: none; margin: 0 0 14px 12px; padding: 4px 0 0 12px; border-left: 2px solid var(--hair); }
+.ctopics li { position: relative; margin-top: 8px; }
+.ctopics li::before { content: ""; position: absolute; left: -12px; top: 15px; width: 10px; height: 2px; background: var(--hair); }
+.ctopic { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; padding: 7px 9px; display: block; }
+.ctopic:hover { border-color: var(--axis); }
+.ctopic[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ctopic .tn { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+.dot { flex: none; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--axis); background: var(--st-new); }
+.dot[data-s="learning"] { background: var(--st-learning); border-color: var(--st-learning); }
+.dot[data-s="reviewing"] { background: var(--st-reviewing); border-color: var(--st-reviewing); }
+.dot[data-s="mastered"] { background: var(--st-mastered); border-color: var(--st-mastered); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chips span { font-size: 11.5px; color: var(--ink-2); background: var(--page); border-radius: 6px; padding: 1px 6px; }
+.ctopic .sm { font-size: 12px; color: var(--ink-2); margin-top: 4px; font-weight: 400; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hint { font-size: 13px; color: var(--ink-2); margin: -6px 0 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 12px; padding: 0 8px 6px 0; }
 td { padding: 6px 8px 6px 0; border-top: 1px solid var(--hair); vertical-align: top; }
@@ -142,8 +187,12 @@ footer { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: cen
 @media (max-width: 900px) {
   .tiles { grid-template-columns: repeat(2, 1fr); }
   .tiles .tile:first-child { grid-column: span 2; }
-  .grid, .two { grid-template-columns: minmax(0, 1fr); }
+  .grid, .two, .strip { grid-template-columns: minmax(0, 1fr); }
   .kv { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+  .cunit::before, .cunit::after, .cmap-stem { display: none; }
+  .cmap-root { margin-bottom: 4px; }
 }
 </style>
 </head>
@@ -153,57 +202,14 @@ footer { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: cen
 <script>
 const DATA = /*__LE_DATA__*/null;
 
-const I18N = {
-  en: {
-    noData: "No data. Run /learn dashboard to generate this page.",
-    theme: "Light / dark", daysLeft: "Days to the exam", noDate: "No exam date", examDay: "Exam day!", past: "Exam date has passed",
-    on: "on", finish: "Roadmap done by", streak: "Streak", days: "days", day: "day", freezes: "streak freezes", freeze1: "streak freeze", reviewPhase: "Review phase: all topics studied",
-    doneToday: "Studied today", notToday: "Not studied today yet", level: "Level", xpTo: "XP to level",
-    today: "Today", reviews: "reviews", newTopics: "new topics", goalDone: "✓ Goal done", perDay: "topics/day planned",
-    overload: "⚠ Tight plan: more topics per day than your daily time allows",
-    accuracy: "Accuracy", answers: "answers", noAnswers: "No answers yet",
-    map: "Roadmap", topics: "topics", studied: "studied",
-    s_new: "Not started", s_learning: "Learning", s_reviewing: "Reviewing", s_mastered: "Mastered", nextUp: "Next up",
-    pick: "Pick a topic on the map to see its details.", cards: "Questions", due: "Due now", weight: "Exam weight",
-    studiedOn: "Studied on", notStudied: "Not studied yet", sources: "Materials",
-    activity: "Activity · last 17 weeks", less: "Less", more: "More", frozen: "streak freeze",
-    trend: "Accuracy per study day", trendEmpty: "Your accuracy will show up here after your first sessions.",
-    forecast: "Reviews due · next 14 days", forecastEmpty: "No reviews scheduled yet.",
-    achievements: "Achievements", locked: "Locked", mocks: "Mock exams", mocksEmpty: "No mock exams yet. Run /learn exam.",
-    date: "Date", score: "Score", sessions: "Recent sessions", kind: "Type", minutes: "Min", correct: "Correct", xp: "XP",
-    study: "Study", mock: "Mock exam", file: "File", pages: "Pages", added: "Added", summary: "Summary",
-    sourcesEmpty: "No materials yet. Run /learn add <path>.", generated: "Generated", roadEmpty: "No roadmap yet. Run /learn to build it.",
-    totals: "in total", mastered: "mastered"
-  },
-  es: {
-    noData: "Sin datos. Ejecuta /learn dashboard para generar esta página.",
-    theme: "Claro / oscuro", daysLeft: "Días para el examen", noDate: "Sin fecha de examen", examDay: "¡Hoy es el examen!", past: "La fecha del examen ya pasó",
-    on: "el", finish: "Roadmap completo el", streak: "Racha", days: "días", day: "día", freezes: "protectores de racha", freeze1: "protector de racha", reviewPhase: "Fase de repaso: todos los temas vistos",
-    doneToday: "Hoy ya has estudiado", notToday: "Hoy aún no has estudiado", level: "Nivel", xpTo: "XP para el nivel",
-    today: "Hoy", reviews: "repasos", newTopics: "temas nuevos", goalDone: "✓ Meta cumplida", perDay: "temas/día previstos",
-    overload: "⚠ Plan ajustado: más temas al día de los que caben en tu tiempo diario",
-    accuracy: "Aciertos", answers: "respuestas", noAnswers: "Aún sin respuestas",
-    map: "Roadmap", topics: "temas", studied: "estudiados",
-    s_new: "Sin empezar", s_learning: "Aprendiendo", s_reviewing: "Repasando", s_mastered: "Dominado", nextUp: "Siguiente",
-    pick: "Pulsa un tema del mapa para ver su detalle.", cards: "Preguntas", due: "Pendientes", weight: "Peso en examen",
-    studiedOn: "Estudiado el", notStudied: "Aún sin estudiar", sources: "Materiales",
-    activity: "Actividad · últimas 17 semanas", less: "Menos", more: "Más", frozen: "protector de racha",
-    trend: "Aciertos por día de estudio", trendEmpty: "Aquí verás tus aciertos tras las primeras sesiones.",
-    forecast: "Repasos pendientes · próximos 14 días", forecastEmpty: "Aún no hay repasos programados.",
-    achievements: "Logros", locked: "Bloqueado", mocks: "Simulacros", mocksEmpty: "Aún no hay simulacros. Ejecuta /learn exam.",
-    date: "Fecha", score: "Nota", sessions: "Últimas sesiones", kind: "Tipo", minutes: "Min", correct: "Aciertos", xp: "XP",
-    study: "Estudio", mock: "Simulacro", file: "Archivo", pages: "Págs.", added: "Añadido", summary: "Resumen",
-    sourcesEmpty: "Aún no hay materiales. Ejecuta /learn add <ruta>.", generated: "Generado", roadEmpty: "Aún no hay roadmap. Ejecuta /learn para crearlo.",
-    totals: "en total", mastered: "dominados"
-  }
-};
+const NO_DATA = "No data. Run /learn:dashboard to generate this page.";
 
 (function () {
   const app = document.getElementById("app");
   const tip = document.getElementById("tip");
-  if (!DATA) { app.textContent = I18N.en.noData; return; }
-  const T = I18N[DATA.lang] || I18N.en;
-  const loc = DATA.lang === "es" ? "es-ES" : "en-GB";
+  if (!DATA) { app.textContent = NO_DATA; return; }
+  const T = DATA.t;
+  const loc = DATA.locale || "en-GB";
   document.documentElement.lang = DATA.lang;
   document.title = DATA.exam.name + " · Learn Everything";
 
@@ -240,6 +246,12 @@ const I18N = {
       <div class="d">${tot.answers ? tot.answers + " " + T.answers + " " + T.totals : T.noAnswers}</div></div>
   </section>
   ${plan.overload ? '<div class="card" style="margin-bottom:16px;font-size:13.5px">' + T.overload + "</div>" : ""}
+  <div class="strip">
+    <section class="card"><h2>${T.achievements} · ${DATA.achievements.filter(a => a.date).length}/${DATA.achievements.length}</h2>
+      <div class="badges" id="badges"></div><div id="nextach"></div><div class="ach" id="ach"></div></section>
+    <section class="card focus"><h2>${T.focus}</h2><div id="focus"></div></section>
+  </div>
+  <section class="card" style="margin-bottom:16px"><h2>${T.contentMap}</h2><p class="hint">${T.contentHint}</p><div id="cmap"></div></section>
   <div class="grid">
     <div class="col">
       <section class="card"><h2>${T.map}</h2>
@@ -255,7 +267,6 @@ const I18N = {
         <section class="card"><h2>${T.forecast}</h2><div id="forecast"></div></section>
       </div>
       <section class="card"><h2>${T.trend}</h2><div id="trend"></div></section>
-      <section class="card"><h2>${T.achievements} · ${DATA.achievements.filter(a => a.date).length}/${DATA.achievements.length}</h2><div class="ach" id="ach"></div></section>
       <div class="two">
         <section class="card"><h2>${T.mocks}</h2><div class="scroll" id="mocks"></div></section>
         <section class="card"><h2>${T.sources}</h2><div class="scroll" id="sources"></div></section>
@@ -318,9 +329,30 @@ const I18N = {
     map.appendChild(box);
   });
 
-  function select(id) {
+  // ---------- content map
+  const cmap = document.getElementById("cmap");
+  if (!DATA.units.length) cmap.innerHTML = `<div class="empty">${T.roadEmpty}</div>`;
+  else {
+    let c = `<div class="cmap-root"><span>${esc(DATA.exam.name)}</span></div><div class="cmap-stem"></div><div class="cmap">`;
+    DATA.units.forEach(u => {
+      const done = u.topics.filter(t => t.status !== "new").length;
+      c += `<div class="cunit"><h3><span>${esc(u.name)}</span><em>${done}/${u.topics.length}</em></h3><ul class="ctopics">`;
+      u.topics.forEach(t => {
+        const extra = t.concepts && t.concepts.length
+          ? `<div class="chips">${t.concepts.map(x => "<span>" + esc(x) + "</span>").join("")}</div>`
+          : (t.summary ? `<div class="sm">${esc(t.summary)}</div>` : "");
+        c += `<li><button class="ctopic" data-id="${esc(t.id)}" aria-pressed="false"><span class="tn"><i class="dot" data-s="${t.status}"></i>${esc(t.name)}</span>${extra}</button></li>`;
+      });
+      c += "</ul></div>";
+    });
+    cmap.innerHTML = c + "</div>";
+    cmap.querySelectorAll(".ctopic").forEach(b => b.addEventListener("click", () => select(b.dataset.id, true)));
+  }
+
+  function select(id, reveal) {
     const t = byId[id];
-    document.querySelectorAll(".node").forEach(n => n.setAttribute("aria-pressed", n.dataset.id === id ? "true" : "false"));
+    if (!t) return;
+    document.querySelectorAll(".node, .ctopic").forEach(n => n.setAttribute("aria-pressed", n.dataset.id === id ? "true" : "false"));
     document.getElementById("detail").innerHTML = `
       <h3>${esc(t.name)}</h3>
       <div class="meta">${esc(t.unit)} · ${ICON[t.status]} ${T["s_" + t.status]}${t.id === firstNew ? " · " + T.nextUp : ""} · ${t.studied ? T.studiedOn + " " + fmt(t.studied) : T.notStudied}</div>
@@ -331,7 +363,12 @@ const I18N = {
         <div><b>${t.due}</b><span>${T.due}</span></div>
         <div><b>×${t.weight}</b><span>${T.weight}</span></div>
       </div>
+      ${t.concepts && t.concepts.length ? '<div class="chips" style="margin-top:12px">' + t.concepts.map(x => "<span>" + esc(x) + "</span>").join("") + "</div>" : ""}
       ${t.sources.map(s => '<span class="pill">📄 ' + esc(s) + "</span>").join("")}`;
+    if (reveal) {
+      const box = document.getElementById("detail"), r = box.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > window.innerHeight) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   }
   const start = firstNew || (DATA.units[0] && DATA.units[0].topics[0] && DATA.units[0].topics[0].id);
   if (start) select(start);
@@ -395,9 +432,35 @@ const I18N = {
     hit.addEventListener("mouseleave", () => { xh.style.visibility = "hidden"; hideTip(); });
   }
 
-  // ---------- achievements
-  document.getElementById("ach").innerHTML = DATA.achievements.map(a =>
+  // ---------- achievements: one row of badges, the next one to unlock, full list on demand
+  const badges = document.getElementById("badges");
+  DATA.achievements.forEach(a => {
+    const b = document.createElement("button");
+    b.className = "badge " + (a.date ? "on" : "off");
+    b.textContent = a.date ? a.icon : "🔒";
+    b.setAttribute("aria-label", a.name + " — " + (a.date ? fmt(a.date) : a.description));
+    hover(b, a.name + " · " + (a.date ? fmt(a.date) : a.description));
+    b.addEventListener("click", () => toggleAch());
+    badges.appendChild(b);
+  });
+  const pending = DATA.achievements.filter(a => !a.date && a.progress).sort((a, b) => b.progress[0] / b.progress[1] - a.progress[0] / a.progress[1]);
+  const na = pending[0];
+  document.getElementById("nextach").innerHTML = `<div class="nextach">${na ? `<span>${T.nextAch}: ${na.icon} <b>${esc(na.name)}</b> · ${na.progress[0]}/${na.progress[1]}</span><div class="bar"><i style="width:${Math.round(100 * na.progress[0] / na.progress[1])}%"></i></div>` : ""}<button class="linkbtn" id="achbtn" aria-expanded="false">${T.showAll}</button></div>`;
+  const achBox = document.getElementById("ach");
+  achBox.innerHTML = DATA.achievements.map(a =>
     `<div class="${a.date ? "" : "lock"}"><span class="ic">${a.date ? a.icon : "🔒"}</span><b>${esc(a.name)}</b><span>${a.date ? fmt(a.date) : esc(a.description)}</span></div>`).join("");
+  function toggleAch() {
+    const open = achBox.classList.toggle("open"), btn = document.getElementById("achbtn");
+    btn.textContent = open ? T.showLess : T.showAll; btn.setAttribute("aria-expanded", open);
+  }
+  document.getElementById("achbtn").addEventListener("click", toggleAch);
+
+  const fx = DATA.focus, row = (r, cls) => `<li><button data-id="${esc(r.id)}">${esc(r.name)}</button><span class="pct ${cls}">${r.accuracy}%</span></li>`;
+  document.getElementById("focus").innerHTML = fx.strong.length || fx.weak.length
+    ? (fx.strong.length ? `<h3>💪 ${T.strong}</h3><ul>${fx.strong.map(r => row(r, "good")).join("")}</ul>` : "")
+      + (fx.weak.length ? `<h3>🎯 ${T.weak}</h3><ul>${fx.weak.map(r => row(r, "bad")).join("")}</ul>` : "")
+    : `<div class="empty">${T.focusEmpty}</div>`;
+  document.querySelectorAll("#focus button").forEach(b => b.addEventListener("click", () => select(b.dataset.id, true)));
 
   // ---------- tables
   const table = (head, rows) => `<table><thead><tr>${head.map(h => `<th class="${h[1] || ""}">${h[0]}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
@@ -405,7 +468,7 @@ const I18N = {
     ? table([[T.date], [T.score, "n"], ["%", "n"]], DATA.mocks.slice().reverse().map(m => `<tr><td>${fmt(m.date)}</td><td class="n">${m.score}/${m.total}</td><td class="n">${m.pct}%</td></tr>`))
     : `<div class="empty">${T.mocksEmpty}</div>`;
   document.getElementById("sources").innerHTML = DATA.sources.length
-    ? table([[T.file], [T.pages, "n"], [T.added, "n"]], DATA.sources.map(s => `<tr><td title="${esc(s.summary)}">${esc(s.name)}<div style="color:var(--muted);font-size:12px">${esc(s.file)}</div></td><td class="n">${s.pages == null ? "—" : esc(s.pages)}</td><td class="n">${s.added ? fmt(s.added) : ""}</td></tr>`))
+    ? table([[T.file], [T.pages, "n"], [T.added, "n"]], DATA.sources.map(s => `<tr><td title="${esc(s.summary)}">${esc(s.name)}<div style="color:var(--muted);font-size:12px">${esc(s.file || T.pasted)}</div></td><td class="n">${s.pages == null ? "—" : esc(s.pages)}</td><td class="n">${s.added ? fmt(s.added) : ""}</td></tr>`))
     : `<div class="empty">${T.sourcesEmpty}</div>`;
   document.getElementById("sessions").innerHTML = DATA.sessions.length
     ? table([[T.date], [T.kind], [T.minutes, "n"], [T.correct, "n"], [T.xp, "n"]], DATA.sessions.map(s => `<tr><td>${fmt(s.date)}</td><td>${s.kind === "mock" ? T.mock : T.study}</td><td class="n">${s.minutes || "—"}</td><td class="n">${s.correct}/${s.answers}</td><td class="n">+${s.xp}</td></tr>`))
