@@ -1,9 +1,6 @@
 <div align="center">
 
-<!-- LOGO: save it as docs/logo.png and uncomment the next line -->
-<!-- <img src="docs/logo.png" alt="Learn Everything" width="140"> -->
-
-# Learn Everything
+<img src="docs/banner.png" alt="Learn Everything — Your notes. Your roadmap. Your exam." width="100%">
 
 **Turn your own notes into an exam plan, a personal tutor and a daily habit.**
 

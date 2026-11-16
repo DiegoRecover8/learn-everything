@@ -1,9 +1,6 @@
 <div align="center">
 
-<!-- LOGO: guárdalo como docs/logo.png y descomenta la línea siguiente -->
-<!-- <img src="docs/logo.png" alt="Learn Everything" width="140"> -->
-
-# Learn Everything
+<img src="docs/banner.png" alt="Learn Everything — Tus apuntes. Tu roadmap. Tu examen." width="100%">
 
 **Convierte tus propios apuntes en un plan de examen, un tutor personal y un hábito diario.**
 

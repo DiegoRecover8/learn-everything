@@ -4,6 +4,10 @@ All notable changes are listed here. The project follows [semantic versioning](h
 
 ## Unreleased
 
+### Added
+
+- Banner at the top of the README and the plugin icon (`.claude-plugin/icon.png`).
+
 ## 0.2.0 — 2026-11-16
 
 ### Changed
