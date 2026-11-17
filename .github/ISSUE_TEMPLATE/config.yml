@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: 💬 Ask a question or share an idea
+    url: https://github.com/DiegoRecover8/learn-everything/discussions
+    about: Questions about installing or using the plugin, ideas and feedback go to Discussions.
   - name: 🔒 Report a security problem
     url: https://github.com/DiegoRecover8/learn-everything/security/advisories/new
     about: Please report vulnerabilities privately, not in a public issue.
