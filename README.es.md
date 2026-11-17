@@ -6,7 +6,7 @@
 
 Un plugin para [Claude Code](https://claude.com/claude-code)
 
-[![Versión](https://img.shields.io/badge/versi%C3%B3n-0.2.0-2a78d6)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versi%C3%B3n-0.2.1-2a78d6)](CHANGELOG.md)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-0ca30c)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776ab)](https://www.python.org/)
 [![Tests](https://github.com/DiegoRecover8/learn-everything/actions/workflows/tests.yml/badge.svg)](https://github.com/DiegoRecover8/learn-everything/actions/workflows/tests.yml)
@@ -25,15 +25,17 @@ Le das tus PDF, diapositivas, documentos de Word y fotos de tus apuntes **una so
 
 | | |
 |---|---|
-| 📄 **Lee tu material una sola vez** | PDF, Word, PowerPoint, fotos y texto. Cada archivo se convierte en apuntes fieles y se reconoce por su contenido, así que nunca se lee dos veces. |
+| 📄 **Lee tu material una sola vez** | PDF, Word, PowerPoint, cuadernos de Jupyter, fotos y texto. Cada archivo se convierte en apuntes fieles y se reconoce por su contenido, así que nunca se lee dos veces. |
 | 🗺️ **Roadmap y mapa de contenidos** | Unidades y temas con sus conceptos clave, ponderados según lo que cuenta cada uno en el examen. |
 | 📅 **Un plan hasta el examen** | Temas por día según la fecha del examen y tus minutos diarios. Los últimos días se reservan para repasar y, si fallas un día, se replanifica solo. La fecha es opcional. |
 | 🧑‍🏫 **Explica y después pregunta** | Explicaciones cortas e interactivas sacadas de tus apuntes y, después, test, verdadero o falso, rellenar huecos, respuesta corta, desarrollo, ordenar y emparejar. |
 | 🔁 **Repetición espaciada** | SM-2 te vuelve a preguntar cada cosa en el momento justo, y siempre antes del examen. |
+| 🎯 **Repasa lo que elijas** | Un tema, una unidad entera, todo lo de un PDF o tus temas más flojos, cuando quieras. También desde un botón en cada tema del dashboard. |
 | 📝 **Simulacros** | Sin correcciones hasta el final, con nota y desglose por tema. |
 | 🔥 **Rachas, XP, niveles y 16 logros** | Y protectores de racha, para que un mal día no te la borre. |
 | 📊 **Dashboard** | Una página HTML local: cuenta atrás, mapa de contenidos, roadmap, puntos fuertes y débiles, actividad, aciertos y repasos pendientes. Modo claro y oscuro. |
 | 👋 **Un resumen cada vez que vuelves** | Qué viste la última vez, en qué vas fuerte, qué mejorar y el plan de hoy. |
+| 📚 **Varios exámenes a la vez** | Cada asignatura tiene su roadmap, sus preguntas y su dashboard; `/learn` te pregunta cuál estudiar. La racha y el XP son comunes. |
 | 🌍 **En cualquier idioma** | Estudia en tu idioma. El dashboard y las líneas de estado están en español, inglés, francés, alemán, italiano y portugués. |
 | 🔒 **Privado** | Todo se queda en tu ordenador, en archivos normales. |
 
@@ -67,6 +69,7 @@ A partir de ahí basta con `/learn` una vez al día. Cada vez que abras Claude C
 [Learn Everything] 📖 Última sesión (ayer): Ley de Gauss · 8/10 aciertos
 [Learn Everything] 💪 Fuerte en: Ley de Coulomb · 🎯 A mejorar: Potencial eléctrico
 [Learn Everything] 📅 Hoy: 14 repasos + 1 tema nuevo — ejecuta /learn
+[Learn Everything] 📚 También: Historia del Arte (12 días)
 ```
 
 ## 🧭 Comandos
@@ -75,11 +78,12 @@ Escribe `/learn` y Claude Code te los muestra todos.
 
 | Comando | Qué hace |
 |---|---|
-| `/learn` | Hace lo que toque hoy: setup, material o la sesión de estudio |
+| `/learn` | Pregunta qué examen y qué quieres hacer, y lanza la sesión de hoy (o el setup o el material, si faltan) |
 | `/learn:setup` | Crea un examen, o cambia la fecha, el tiempo diario, el idioma o el nivel |
 | `/learn:add` | Carga material y crea o amplía el roadmap |
+| `/learn:review` | Repasa un tema, una unidad, un documento o tus temas más flojos: `/learn:review gauss` |
 | `/learn:exam` | Simulacro de examen |
-| `/learn:dashboard` | Genera y abre el dashboard |
+| `/learn:dashboard` | Genera y abre los dashboards (uno por examen, con selector) |
 | `/learn:data` | Cambiar de examen, copia de seguridad, exportar, restaurar, borrar |
 
 También puedes decirlo con tus palabras: "pregúntame de la unidad 2", "tengo diapositivas nuevas", "¿cómo voy?".
@@ -94,12 +98,14 @@ No hace falta escribir rutas:
 
 | Tipo | Notas |
 |---|---|
-| PDF | Los documentos largos se leen por rangos de páginas |
+| PDF | El texto se lee página a página sin instalar nada; las páginas con figuras y las escaneadas se convierten en imágenes para que Claude las vea |
 | DOCX, PPTX | Texto, tablas, notas del orador e imágenes incrustadas |
+| IPYNB | Cuadernos de Jupyter: explicaciones, código, resultados y gráficas |
+| RTF | Texto enriquecido |
 | JPG, PNG, WEBP, GIF | Fotos de apuntes, pizarras o páginas de libro |
 | TXT, MD, CSV | Se leen tal cual |
 
-Los PDF escaneados y las fotos los lee Claude directamente, así que no hace falta ninguna herramienta de OCR. La primera lectura de un documento largo tarda unos minutos; solo ocurre una vez.
+Claude lee él mismo los escaneados y las fotos, así que no hace falta ninguna herramienta de OCR. La primera lectura de un documento largo tarda unos minutos; solo ocurre una vez.
 
 ## ⚙️ Cómo funciona
 
@@ -124,12 +130,13 @@ Los PDF escaneados y las fotos los lee Claude directamente, así que no hace fal
 Todo se guarda como archivos normales en `~/learn-everything/` (define `LEARN_EVERYTHING_HOME` para usar otra carpeta):
 
 ```
-profile.json            tú: XP, racha y logros (común a todos los exámenes)
-<examen>/exam.json      ajustes del examen y roadmap
-<examen>/cards.json     preguntas y su calendario de repaso
-<examen>/log.jsonl      una línea por sesión
-<examen>/sources/       apuntes creados a partir de tu material
-<examen>/dashboard.html el dashboard
+profile.json            tú: XP, nivel, racha y logros, comunes a todos tus exámenes
+<examen>/               una carpeta por examen o asignatura, independiente de las demás
+  exam.json             ajustes y roadmap
+  cards.json            preguntas y su calendario de repaso
+  log.jsonl             una línea por sesión
+  sources/              apuntes creados a partir de tu material
+  dashboard.html        el dashboard de este examen
 ```
 
 - Tus archivos originales nunca se modifican ni se copian; solo se guardan los apuntes creados a partir de ellos.
@@ -146,9 +153,15 @@ En Claude Code: la terminal, la app de escritorio y las extensiones para IDE. Ne
 </details>
 
 <details>
+<summary><b>¿Necesito saber programar?</b></summary>
+
+No. Hablas con Claude con tus palabras y respondes pulsando opciones. Claude lo hace todo por ti: lee tus archivos, guarda tu progreso y abre el dashboard. Lo único que se escribe en una terminal son los dos comandos de instalación de arriba, una sola vez.
+</details>
+
+<details>
 <summary><b>¿Puedo preparar varios exámenes a la vez?</b></summary>
 
-Sí. Cada examen tiene su roadmap, sus preguntas y su plan; el XP, la racha y los logros son comunes. Cambia de examen con `/learn:data`.
+Sí. Cada examen tiene su carpeta, su roadmap, sus preguntas, su plan y su dashboard; el XP, la racha y los logros son comunes. `/learn` te pregunta qué examen quieres estudiar, los dashboards enlazan entre sí e incluso puedes estudiar dos asignaturas a la vez en dos ventanas de Claude Code.
 </details>
 
 <details>
@@ -180,7 +193,7 @@ Las contribuciones son bienvenidas, sobre todo **nuevos idiomas** (un archivo JS
 ```
 .claude-plugin/        manifiestos del plugin y del marketplace
 skills/learn/          /learn: la sesión diaria y las guías para explicar y preguntar
-skills/<acción>/       /learn:setup, /learn:add, /learn:exam, /learn:dashboard, /learn:data
+skills/<acción>/       /learn:setup, /learn:add, /learn:review, /learn:exam, /learn:dashboard, /learn:data
 scripts/le.py          el motor de datos (solo librería estándar de Python)
 scripts/i18n/          traducciones del dashboard y de las líneas de estado
 scripts/dashboard_template.html

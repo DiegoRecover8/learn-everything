@@ -28,7 +28,10 @@
   "topic_n": "{n} neue Themen",
   "add": "📎 Nächster Schritt: füge deine Unterlagen mit /learn:add hinzu",
   "roadmap": "🗺️ Der Lernplan fehlt noch — starte /learn",
-  "done": "✅ Tagesziel erreicht — /learn für zusätzliche Übung"
+  "done": "✅ Tagesziel erreicht — /learn für zusätzliche Übung",
+  "others": "📚 Außerdem: {list}",
+  "in_days": "{n} {days}",
+  "exam_today_short": "heute"
  },
  "edu": {
   "secondary": "Schule (Sekundarstufe)",
@@ -119,7 +122,15 @@
   "strong": "Stärken",
   "weak": "Zu verbessern",
   "focusEmpty": "Beantworte ein paar Fragen pro Thema, um deine Stärken und Schwächen zu sehen.",
-  "pasted": "In den Chat eingefügt"
+  "pasted": "In den Chat eingefügt",
+  "review1": "Wiederholung",
+  "newTopic": "neues Thema",
+  "reviewTopic": "🔁 Dieses Thema wiederholen",
+  "reviewSource": "Die Themen aus diesem Material wiederholen",
+  "copied": "Kopiert. In Claude Code einfügen und Enter drücken:",
+  "copyFail": "Diesen Befehl in Claude Code kopieren:",
+  "reviewKind": "Wiederholung",
+  "exams": "Deine Prüfungen"
  },
  "achievements": {
   "first_session": ["Erster Schritt", "Schließe deine erste Einheit ab"],

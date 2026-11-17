@@ -15,6 +15,8 @@ Statistics are always computed on read, never stored.
 Every command prints one JSON object on stdout; errors go to stderr as JSON.
 """
 import argparse
+import base64
+import contextlib
 import datetime as dt
 import hashlib
 import json
@@ -23,26 +25,33 @@ import os
 import random
 import re
 import shutil
+import struct
+import subprocess
 import sys
+import time
 import unicodedata
 import zipfile
+import zlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 TAG = "[Learn Everything]"
 
 SUPPORTED = {
-    ".pdf": "pdf", ".docx": "docx", ".pptx": "pptx",
+    ".pdf": "pdf", ".docx": "docx", ".pptx": "pptx", ".ipynb": "notebook", ".rtf": "rtf",
     ".txt": "text", ".md": "text", ".csv": "text",
     ".jpg": "image", ".jpeg": "image", ".png": "image", ".webp": "image", ".gif": "image",
 }
+EXTRACTABLE = ("pdf", "docx", "pptx", "notebook", "rtf")
 READ_WITH = {
-    "pdf": "Read tool (use the `pages` parameter, max 20 pages per call)",
+    "pdf": "le.py extract <file>, then le.py render <file> --pages N for pages with figures or scans",
     "image": "Read tool",
     "text": "Read tool",
     "docx": "le.py extract <file>",
     "pptx": "le.py extract <file>",
+    "notebook": "le.py extract <file>",
+    "rtf": "le.py extract <file>",
 }
 CARD_TYPES = ("mcq", "multi", "tf", "cloze", "short", "essay", "order", "match")
 BACKUPS_KEPT = 10
@@ -119,8 +128,30 @@ def save(path, data):
     os.replace(str(tmp), str(path))
 
 
+@contextlib.contextmanager
+def write_lock():
+    """One writer at a time: two sessions open in parallel (one per exam, say) share
+    profile.json, and neither may lose the other's XP or streak."""
+    path = home() / ".lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(path), "a+") as f:
+        try:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        except ImportError:  # Windows
+            import msvcrt
+            try:
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)  # retries for about 10 s
+            except OSError:
+                raise LEError("another session is saving right now - try again in a moment")
+        yield  # closing the file releases the lock
+
+
+_STDIN = []  # main() reads the payload before taking the write lock, so a slow pipe never holds it
+
+
 def read_stdin_json():
-    raw = sys.stdin.read()
+    raw = _STDIN[0] if _STDIN else sys.stdin.read()
     if not raw.strip():
         raise LEError("expected a JSON payload on stdin")
     try:
@@ -692,18 +723,48 @@ def hook_lines(profile, info):
         r, t = plan["reviews_today_remaining"], plan["new_today_remaining"]
         lines.append(T["today"].format(reviews=T["review_1" if r == 1 else "review_n"].format(n=r),
                                        topics=T["topic_1" if t == 1 else "topic_n"].format(n=t)))
+    others = [e for e in info.get("others", []) if e.get("name")]
+    if others:
+        def label(e):
+            left = e.get("days_left")
+            if left is None or left < 0:
+                return e["name"]
+            return "%s (%s)" % (e["name"], T["exam_today_short"] if left == 0 else
+                                T["in_days"].format(n=left, days=plural(left)))
+        lines.append(T["others"].format(list=" · ".join(label(e) for e in others[:3])))
     return lines
+
+
+def exams_overview(profile):
+    """Every exam, with what it needs today: what /learn shows to choose one."""
+    rows = []
+    for slug in list_exams():
+        try:
+            info = summary(profile, home() / slug)
+        except Exception:  # one broken exam must not hide the others
+            rows.append({"slug": slug, "name": None, "error": "unreadable"})
+            continue
+        p = info["plan"]
+        rows.append({"slug": slug, "name": info["exam"]["name"], "days_left": p["days_left"],
+                     "today": {"reviews": p["reviews_today_remaining"], "new_topics": p["new_today_remaining"]},
+                     "topics": info["topics"], "next_action": info["next_action"],
+                     "active": slug == profile.get("active_exam")})
+    return rows
 
 
 def cmd_status(args):
     if args.hook:
         try:
             profile = get_profile(required=False)
-            if not profile or not profile.get("active_exam"):
-                lang = lang_of(profile) if profile else env_lang()
+            exams = exams_overview(profile) if profile else []
+            slugs = [e["slug"] for e in exams]
+            lang = lang_of(profile) if profile else env_lang()
+            if not slugs:
                 print("%s %s" % (TAG, texts(lang, "hook")["setup"]))
                 return
-            info = summary(profile, exam_dir(profile))
+            active = profile.get("active_exam") if profile.get("active_exam") in slugs else slugs[0]
+            info = summary(profile, home() / active)
+            info["others"] = [e for e in exams if e["slug"] != active]
             for line in hook_lines(profile, info):
                 print("%s %s" % (TAG, line))
         except Exception:  # a hook must never break the session
@@ -716,16 +777,24 @@ def cmd_status(args):
              "languages": [{"code": c, "name": p.get("name"), "flag": p.get("flag")} for c, p in i18n().items()],
              "education_levels": list(EDU_LEVELS)})
         return
+    exams = exams_overview(profile)
+    slugs = [e["slug"] for e in exams]
     res = {"learner": {"name": profile.get("name"), "language": profile.get("language"),
                        "education_level": profile.get("education_level")},
            "streak": streak(profile), "studied_today": today().isoformat() in profile.get("study_days", []),
            "freezes": profile.get("freezes", 0), "level": level_info(profile.get("xp", 0)),
-           "achievements": len(profile.get("achievements", [])), "exams": list_exams(),
+           "achievements": len(profile.get("achievements", [])), "exams": exams,
            "home": str(home())}
-    if not profile.get("active_exam") or args.exam is None and profile["active_exam"] not in res["exams"]:
-        res["next_action"] = "setup"
-    else:
+    if args.exam:
         res.update(summary(profile, exam_dir(profile, args.exam)))
+    elif not slugs:
+        res["next_action"] = "setup"
+    elif profile.get("active_exam") not in slugs:
+        res["next_action"] = "choose"  # the last exam used was deleted: ask which one
+    else:
+        res.update(summary(profile, exam_dir(profile)))
+    if len(slugs) > 1 and not args.exam:
+        res["choose_exam"] = True  # several exams: ask which one this session is for
     out(res)
 
 
@@ -737,7 +806,8 @@ def cmd_list(args):
         info = summary(profile, d)
         rows.append({"slug": slug, "name": info["exam"]["name"], "exam_date": info["exam"]["exam_date"],
                      "active": slug == profile.get("active_exam"), "topics": info["topics"],
-                     "cards": info["cards"], "sources": info["sources"]})
+                     "cards": info["cards"], "sources": info["sources"],
+                     "dashboard": str(d / "dashboard.html") if (d / "dashboard.html").exists() else None})
     out({"exams": rows, "home": str(home())})
 
 
@@ -878,8 +948,9 @@ def cmd_find(args):
         [Path.home() / n for n in FIND_DIRS if (Path.home() / n).is_dir()]
     known = set()
     profile = get_profile(required=False)
-    if profile and profile.get("active_exam") and (home() / profile["active_exam"]).is_dir():
-        index = load(home() / profile["active_exam"] / "sources" / "index.json", default={"sources": []})
+    slug = args.exam or (profile or {}).get("active_exam")
+    if slug and (home() / slug / "sources" / "index.json").is_file():
+        index = load(home() / slug / "sources" / "index.json", default={"sources": []})
         known = {s.get("path") for s in index["sources"] if s.get("path")}
     cutoff = dt.datetime.now().timestamp() - args.days * 86400
     found = []
@@ -908,7 +979,8 @@ def cmd_find(args):
     out({"files": rows, "searched": [str(r) for r in roots], "more": max(0, len(found) - args.limit)})
 
 
-PAGE_MARK = re.compile(r"\[\s*(?:p|pp|pg|pág|pag|page|pages|slide|slides|diapositiva|diapo|folie)\.?\s*(\d+)", re.I)
+PAGE_MARK = re.compile(r"\[\s*(?:p|pp|pg|pág|pag|page|pages|slide|slides|diapositiva|diapo|folie|cell|celda)\.?\s*(\d+)",
+                       re.I)
 REF = re.compile(r"\s*(s\d+)(?:\D*?(\d+)(?:\s*[-–]\s*(\d+))?)?")
 
 
@@ -1055,32 +1127,1017 @@ def extract_pptx(z):
     return "\n\n".join(chunks)
 
 
+def _joined(x):
+    return "".join(x) if isinstance(x, list) else str(x or "")
+
+
+def extract_notebook(path):
+    """Jupyter notebook -> Markdown with [cell N] marks, plus the images of its outputs (plots)."""
+    try:
+        nb = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise LEError("could not read %s: %s" % (Path(path).name, e))
+    meta = nb.get("metadata") or {}
+    lang = (meta.get("kernelspec") or {}).get("language") or (meta.get("language_info") or {}).get("name") or ""
+    cells = nb.get("cells")
+    if cells is None:  # nbformat 3
+        cells = [c for ws in nb.get("worksheets", []) for c in ws.get("cells", [])]
+    chunks, images = [], []
+    for i, c in enumerate(cells, 1):
+        src = _joined(c.get("source", c.get("input", ""))).strip()
+        part = []
+        if c.get("cell_type") == "code":
+            if src:
+                part.append("```%s\n%s\n```" % (lang, src))
+            for k, o in enumerate(c.get("outputs", []), 1):
+                data = o.get("data") or {}
+                if o.get("output_type") == "error":
+                    text = "%s: %s" % (o.get("ename", "Error"), o.get("evalue", ""))
+                else:
+                    text = _joined(o.get("text", data.get("text/plain", "")))
+                text = re.sub(r"\x1b\[[0-9;]*m", "", text).strip()
+                if text:
+                    part.append("Output:\n```\n%s\n```" % (text[:1500] + "\n…" if len(text) > 1500 else text))
+                for mime, ext in (("image/png", "png"), ("image/jpeg", "jpg")):
+                    if mime in data:
+                        name = "cell-%d-%d.%s" % (i, k, ext)
+                        try:
+                            images.append((name, base64.b64decode(_joined(data[mime]))))
+                            part.append("[image: %s]" % name)
+                        except (ValueError, TypeError):
+                            pass
+        elif src:
+            part.append(src)
+        if part:
+            chunks.append("[cell %d]\n%s" % (i, "\n".join(part)))
+    return "\n\n".join(chunks), images
+
+
+_RTF_SKIP = {"fonttbl", "colortbl", "stylesheet", "info", "pict", "header", "footer", "headerl", "headerr",
+             "footerl", "footerr", "listtable", "listoverridetable", "rsidtbl", "xmlnstbl", "themedata",
+             "colorschememapping", "datastore", "latentstyles", "generator", "expandedcolortbl", "object"}
+_RTF_CHARS = {"emdash": "—", "endash": "–", "bullet": "•", "lquote": "‘", "rquote": "’",
+              "ldblquote": "“", "rdblquote": "”", "~": "\u00a0", "tab": "\t", "cell": "\t",
+              "par": "\n", "line": "\n", "row": "\n", "sect": "\n\n", "page": "\n\n"}
+_RTF_TOKEN = re.compile(r"\\([a-zA-Z]+)(-?\d+)? ?|\\'([0-9a-fA-F]{2})|\\([^a-zA-Z])|([{}])|[\r\n]+|([^\\{}\r\n]+)")
+
+
+def rtf_text(path):
+    """Plain text of an RTF file: macOS textutil when there is one, else a small reader."""
+    if sys.platform == "darwin" and shutil.which("textutil"):
+        r = subprocess.run(["textutil", "-convert", "txt", "-stdout", str(path)], capture_output=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.decode("utf-8", "replace").strip()
+    raw = Path(path).read_bytes().decode("latin-1")
+    out, stack, skip, uc, pending = [], [], False, 1, 0
+    for m in _RTF_TOKEN.finditer(raw):
+        word, arg, hexc, sym, brace, text = m.groups()
+        if brace:
+            if brace == "{":
+                stack.append((skip, uc))
+            elif stack:
+                skip, uc = stack.pop()
+            continue
+        if pending and (hexc or text):  # the plain-text stand-in that follows a \uN character
+            if hexc:
+                pending -= 1
+                continue
+            cut = min(pending, len(text))
+            text, pending = text[cut:], pending - cut
+        if word:
+            if word in _RTF_SKIP:
+                skip = True
+            elif word == "uc":
+                uc = int(arg or 1)
+            elif word == "u" and arg is not None:
+                n = int(arg)
+                if not skip:
+                    out.append(chr(n + 65536 if n < 0 else n))
+                pending = uc
+            elif word in _RTF_CHARS and not skip:
+                out.append(_RTF_CHARS[word])
+        elif sym:
+            if sym == "*":
+                skip = True
+            elif sym in "\\{}" and not skip:
+                out.append(sym)
+            elif sym in _RTF_CHARS and not skip:
+                out.append(_RTF_CHARS[sym])
+            elif sym in "\r\n" and not skip:
+                out.append("\n")
+        elif hexc and not skip:
+            out.append(bytes([int(hexc, 16)]).decode("cp1252", "replace"))
+        elif text and not skip:
+            out.append(text)
+    text = "".join(out)
+    try:  # UTF-8 bytes written as \'hh escapes (some editors do it) read back as cp1252
+        text = text.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+# ----------------------------------------------------------------------------
+# PDF: text and page images, with nothing to install
+# ----------------------------------------------------------------------------
+# Best first: poppler (pdftotext / pdftoppm) when installed, macOS's own PDFKit
+# through osascript (every Mac has it), then a small built-in reader that handles
+# common text PDFs and pulls the scanned pictures out of a page.
+
+class PDFError(Exception):
+    pass
+
+
+_JXA_TEXT = r"""
+ObjC.import("Quartz");
+function run(argv) {
+  var doc = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(argv[0]));
+  if (doc.isNil()) return JSON.stringify({error: "cannot open the file"});
+  if (doc.isLocked) return JSON.stringify({error: "password protected"});
+  var n = parseInt(doc.pageCount), pages = [];
+  for (var i = 0; i < n; i++) {
+    var s = doc.pageAtIndex(i).string;
+    pages.push(s && !s.isNil() ? s.js : "");
+  }
+  return JSON.stringify({pages: pages});
+}
+"""
+
+_JXA_RENDER = r"""
+ObjC.import("Quartz"); ObjC.import("AppKit");
+function run(argv) {
+  var doc = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(argv[0]));
+  if (doc.isNil()) return JSON.stringify({error: "cannot open the file"});
+  if (doc.isLocked) return JSON.stringify({error: "password protected"});
+  var dir = argv[1], width = parseInt(argv[2]), n = parseInt(doc.pageCount), done = [];
+  for (var k = 3; k < argv.length; k++) {
+    var p = parseInt(argv[k]);
+    if (p < 1 || p > n) continue;
+    var page = doc.pageAtIndex(p - 1), box = page.boundsForBox($.kPDFDisplayBoxCropBox);
+    var w = box.size.width, h = box.size.height;
+    if (parseInt(page.rotation) % 180 != 0) { var t = w; w = h; h = t; }
+    var s = width / w;
+    var img = page.thumbnailOfSizeForBox($.NSMakeSize(Math.round(w * s), Math.round(h * s)), $.kPDFDisplayBoxCropBox);
+    var rep = $.NSBitmapImageRep.imageRepWithData(img.TIFFRepresentation);
+    var png = rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $());
+    var path = dir + "/page-" + p + ".png";
+    if (png.writeToFileAtomically(path, true)) done.push(path);
+  }
+  return JSON.stringify({images: done, pages: n});
+}
+"""
+
+
+def _osascript(script, *argv):
+    r = subprocess.run(["osascript", "-l", "JavaScript", "-e", script] + [str(a) for a in argv],
+                       capture_output=True, timeout=600)
+    if r.returncode != 0:
+        raise PDFError(r.stderr.decode("utf-8", "replace").strip()[:200] or "osascript failed")
+    data = json.loads(r.stdout.decode("utf-8"))
+    if data.get("error"):
+        raise PDFError(data["error"])
+    return data
+
+
+def pdf_engines(task):
+    """Ways to read PDFs on this computer, best first. LE_PDF_ENGINE forces one (tests)."""
+    order = []
+    if shutil.which("pdftotext" if task == "text" else "pdftoppm"):
+        order.append("poppler")
+    if sys.platform == "darwin" and shutil.which("osascript"):
+        order.append("pdfkit")
+    order.append("builtin")
+    forced = os.environ.get("LE_PDF_ENGINE")
+    return [forced] if forced else order
+
+
+def pdf_text(path):
+    """(engine, [text of each page])."""
+    errors = []
+    for engine in pdf_engines("text"):
+        try:
+            if engine == "poppler":
+                r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"], capture_output=True, timeout=600)
+                if r.returncode != 0:
+                    raise PDFError(r.stderr.decode("utf-8", "replace").strip()[:200])
+                pages = r.stdout.decode("utf-8", "replace").split("\f")
+                if pages and not pages[-1].strip():
+                    pages.pop()
+            elif engine == "pdfkit":
+                pages = _osascript(_JXA_TEXT, path)["pages"]
+            else:
+                pages = MiniPDF(path).texts()
+            if pages:
+                return engine, pages
+            errors.append("%s: no pages" % engine)
+        except (PDFError, OSError, ValueError, KeyError, RecursionError, subprocess.SubprocessError) as e:
+            errors.append("%s: %s" % (engine, e))
+    raise LEError("could not read the text of %s (%s)" % (Path(path).name, "; ".join(errors)))
+
+
+def pdf_render(path, pages, width, dest):
+    """(engine, [image paths]) for the given page numbers."""
+    errors = []
+    for engine in pdf_engines("render"):
+        try:
+            if engine == "poppler":
+                images = []
+                for n in pages:
+                    prefix = dest / ("page-%d" % n)
+                    r = subprocess.run(["pdftoppm", "-png", "-singlefile", "-f", str(n), "-l", str(n),
+                                        "-scale-to-x", str(width), "-scale-to-y", "-1", str(path), str(prefix)],
+                                       capture_output=True, timeout=300)
+                    if r.returncode != 0:
+                        raise PDFError(r.stderr.decode("utf-8", "replace").strip()[:200])
+                    if Path(str(prefix) + ".png").exists():
+                        images.append(str(prefix) + ".png")
+            elif engine == "pdfkit":
+                images = _osascript(_JXA_RENDER, path, dest, width, *pages)["images"]
+            else:
+                images = MiniPDF(path).page_images(pages, dest)
+            if images:
+                return engine, images
+            errors.append("%s: no image" % engine)
+        except (PDFError, OSError, ValueError, KeyError, RecursionError, subprocess.SubprocessError) as e:
+            errors.append("%s: %s" % (engine, e))
+    raise LEError("could not turn those pages into images (%s)" % "; ".join(errors))
+
+
+# ---- the built-in reader --------------------------------------------------
+
+class _Name(str):
+    pass
+
+
+class _Op(str):
+    pass
+
+
+class _Ref(int):
+    pass
+
+
+_PDF_SKIP = re.compile(rb"(?:\s|%[^\r\n]*)*")
+_PDF_REGULAR = re.compile(rb"[^\s()<>\[\]{}/%]+")
+_PDF_NUM = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)$")
+_PDF_REF = re.compile(rb"\s+\d+\s+R(?![^\s()<>\[\]{}/%])")
+_PDF_OBJ = re.compile(rb"(\d+)\s+\d+\s+obj\b")
+_PDF_ESC = {ord("n"): b"\n", ord("r"): b"\r", ord("t"): b"\t", ord("b"): b"\b", ord("f"): b"\f"}
+
+
+class _Lexer(object):
+    """PDF objects, and content-stream tokens, from bytes."""
+
+    def __init__(self, data, pos=0, refs=True):
+        self.d, self.p, self.refs = data, pos, refs
+
+    def skip(self):
+        self.p = _PDF_SKIP.match(self.d, self.p).end()
+
+    def at_end(self):
+        self.skip()
+        return self.p >= len(self.d)
+
+    def value(self):
+        while True:
+            self.skip()
+            d, p = self.d, self.p
+            if p >= len(d):
+                raise PDFError("unexpected end")
+            c = d[p:p + 1]
+            if c == b"(":
+                return self._string()
+            if c == b"<" and d[p + 1:p + 2] == b"<":
+                self.p += 2
+                out = {}
+                while not self.at_end() and self.d[self.p:self.p + 2] != b">>":
+                    key = self.value()
+                    val = self.value()
+                    if isinstance(key, _Name):
+                        out[str(key)] = val
+                self.p += 2
+                return out
+            if c == b"<":
+                end = d.find(b">", p)
+                end = len(d) if end < 0 else end
+                self.p = end + 1
+                digits = re.sub(rb"[^0-9A-Fa-f]", b"", d[p + 1:end])
+                return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())
+            if c == b"[":
+                self.p += 1
+                out = []
+                while not self.at_end() and self.d[self.p:self.p + 1] != b"]":
+                    out.append(self.value())
+                self.p += 1
+                return out
+            if c == b"/":
+                m = _PDF_REGULAR.match(d, p + 1)
+                raw = m.group() if m else b""
+                self.p = p + 1 + len(raw)
+                raw = re.sub(rb"#([0-9A-Fa-f]{2})", lambda x: bytes([int(x.group(1), 16)]), raw)
+                return _Name(raw.decode("latin-1"))
+            m = _PDF_REGULAR.match(d, p)
+            if not m:
+                self.p += 1  # a stray delimiter
+                continue
+            tok, self.p = m.group(), m.end()
+            if _PDF_NUM.match(tok):
+                num = float(tok) if b"." in tok else int(tok)
+                if self.refs and isinstance(num, int):
+                    r = _PDF_REF.match(d, self.p)
+                    if r:
+                        self.p = r.end()
+                        return _Ref(num)
+                return num
+            if tok in (b"true", b"false"):
+                return tok == b"true"
+            if tok == b"null":
+                return None
+            return _Op(tok.decode("latin-1"))
+
+    def _string(self):
+        d, p, depth, out, n = self.d, self.p + 1, 1, bytearray(), len(self.d)
+        while p < n:
+            c = d[p]
+            if c == 0x5C:  # backslash
+                p += 1
+                e = d[p] if p < n else 0
+                if e in _PDF_ESC:
+                    out += _PDF_ESC[e]
+                    p += 1
+                elif 0x30 <= e <= 0x37:
+                    m = re.match(rb"[0-7]{1,3}", d[p:p + 3])
+                    out.append(int(m.group(), 8) & 0xFF)
+                    p += len(m.group())
+                elif e in (0x0D, 0x0A):
+                    p += 2 if d[p:p + 2] == b"\r\n" else 1
+                else:
+                    out.append(e)
+                    p += 1
+                continue
+            if c == 0x28:
+                depth += 1
+            elif c == 0x29:
+                depth -= 1
+                if not depth:
+                    p += 1
+                    break
+            out.append(c)
+            p += 1
+        self.p = p
+        return bytes(out)
+
+
+def _inflate(raw):
+    """zlib, keeping whatever comes out before a broken byte."""
+    z, out = zlib.decompressobj(), bytearray()
+    for i in range(0, len(raw), 65536):
+        try:
+            out += z.decompress(raw[i:i + 65536])
+        except zlib.error:
+            break
+    return bytes(out)
+
+
+def _unpredict(data, parms):
+    """Undo the PNG row filters some streams use (Predictor >= 10)."""
+    if not isinstance(parms, dict) or not isinstance(parms.get("Predictor"), int) or parms["Predictor"] < 10:
+        return data
+    colors, bpc, cols = parms.get("Colors", 1), parms.get("BitsPerComponent", 8), parms.get("Columns", 1)
+    bpp, row = max(1, colors * bpc // 8), (colors * bpc * cols + 7) // 8
+    out, prev = bytearray(), bytearray(row)
+    for i in range(0, len(data) - row, row + 1):
+        kind, line = data[i], bytearray(data[i + 1:i + 1 + row])
+        for j in range(row):
+            left = line[j - bpp] if j >= bpp else 0
+            up, corner = prev[j], prev[j - bpp] if j >= bpp else 0
+            if kind == 1:
+                line[j] = (line[j] + left) & 255
+            elif kind == 2:
+                line[j] = (line[j] + up) & 255
+            elif kind == 3:
+                line[j] = (line[j] + ((left + up) >> 1)) & 255
+            elif kind == 4:
+                pa, pb, pc = abs(up - corner), abs(left - corner), abs(left + up - 2 * corner)
+                line[j] = (line[j] + (left if pa <= pb and pa <= pc else up if pb <= pc else corner)) & 255
+        out += line
+        prev = line
+    return bytes(out)
+
+
+def _pdf_decode(raw, filters, parms):
+    filters = filters if isinstance(filters, list) else [filters] if filters else []
+    parms = parms if isinstance(parms, list) else [parms] * len(filters)
+    for f, prm in zip(filters, parms):
+        f = str(f)
+        if f in ("FlateDecode", "Fl"):
+            raw = _unpredict(_inflate(raw), prm)
+        elif f in ("ASCIIHexDecode", "AHx"):
+            digits = re.sub(rb"[^0-9A-Fa-f]", b"", raw.split(b">")[0])
+            raw = bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())
+        elif f in ("ASCII85Decode", "A85"):
+            body = raw.strip()
+            body = (body[2:] if body.startswith(b"<~") else body).split(b"~>")[0]
+            raw = base64.a85decode(re.sub(rb"\s", b"", body))
+        else:
+            raise PDFError("unsupported filter " + f)
+    return raw
+
+
+_GLYPHS = {
+    "space": " ", "exclam": "!", "quotedbl": '"', "numbersign": "#", "dollar": "$", "percent": "%",
+    "ampersand": "&", "quotesingle": "'", "quoteright": "’", "quoteleft": "‘", "parenleft": "(",
+    "parenright": ")", "asterisk": "*", "plus": "+", "comma": ",", "hyphen": "-", "minus": "−",
+    "period": ".", "slash": "/", "colon": ":", "semicolon": ";", "less": "<", "equal": "=", "greater": ">",
+    "question": "?", "at": "@", "bracketleft": "[", "backslash": "\\", "bracketright": "]",
+    "asciicircum": "^", "underscore": "_", "grave": "`", "braceleft": "{", "bar": "|", "braceright": "}",
+    "asciitilde": "~", "quotedblleft": "“", "quotedblright": "”", "quotesinglbase": "‚",
+    "quotedblbase": "„", "endash": "–", "emdash": "—", "bullet": "•", "ellipsis": "…", "fi": "fi",
+    "fl": "fl", "ff": "ff", "ffi": "ffi", "ffl": "ffl", "exclamdown": "¡", "questiondown": "¿",
+    "guillemotleft": "«", "guillemotright": "»", "degree": "°", "multiply": "×", "divide": "÷",
+    "plusminus": "±", "section": "§", "paragraph": "¶", "periodcentered": "·", "dagger": "†",
+    "daggerdbl": "‡", "copyright": "©", "registered": "®", "trademark": "™", "Euro": "€",
+    "sterling": "£", "yen": "¥", "cent": "¢", "germandbls": "ß", "ordfeminine": "ª",
+    "ordmasculine": "º", "dotlessi": "ı", "mu": "µ", "AE": "Æ", "ae": "æ", "OE": "Œ", "oe": "œ",
+    "Oslash": "Ø", "oslash": "ø", "infinity": "∞", "lessequal": "≤", "greaterequal": "≥",
+    "notequal": "≠", "approxequal": "≈", "summation": "∑", "integral": "∫", "radical": "√",
+    "partialdiff": "∂", "arrowright": "→", "arrowleft": "←", "logicalnot": "¬", "nbspace": "\u00a0",
+}
+_LIGATURES = {0xFB00: "ff", 0xFB01: "fi", 0xFB02: "fl", 0xFB03: "ffi", 0xFB04: "ffl", 0xFB05: "st", 0xFB06: "st"}
+_DIGIT_NAMES = "zero one two three four five six seven eight nine".split()
+_ACCENTS = {"acute": "ACUTE", "grave": "GRAVE", "circumflex": "CIRCUMFLEX", "dieresis": "DIAERESIS",
+            "tilde": "TILDE", "cedilla": "CEDILLA", "ring": "RING ABOVE", "caron": "CARON",
+            "macron": "MACRON", "breve": "BREVE", "ogonek": "OGONEK", "dotaccent": "DOT ABOVE",
+            "hungarumlaut": "DOUBLE ACUTE"}
+
+
+def _glyph(name):
+    """Unicode text for a PostScript glyph name (aacute, uni00E9, alpha...)."""
+    name = str(name).split(".")[0]
+    if "_" in name:
+        return "".join(_glyph(part) for part in name.split("_"))
+    if len(name) == 1:
+        return name
+    if name in _GLYPHS:
+        return _GLYPHS[name]
+    if name in _DIGIT_NAMES:
+        return str(_DIGIT_NAMES.index(name))
+    m = re.match(r"uni((?:[0-9A-Fa-f]{4})+)$", name)
+    if m:
+        return "".join(chr(int(m.group(1)[i:i + 4], 16)) for i in range(0, len(m.group(1)), 4))
+    m = re.match(r"u([0-9A-Fa-f]{4,6})$", name)
+    if m:
+        return chr(int(m.group(1), 16))
+    m = re.match(r"([A-Za-z])(%s)$" % "|".join(_ACCENTS), name)
+    lookups = []
+    if m:
+        lookups.append("LATIN %s LETTER %s WITH %s" % ("CAPITAL" if m.group(1).isupper() else "SMALL",
+                                                       m.group(1).upper(), _ACCENTS[m.group(2)]))
+    lookups.append("GREEK %s LETTER %s" % ("CAPITAL" if name[0].isupper() else "SMALL", name.upper()))
+    for full in lookups:
+        try:
+            return unicodedata.lookup(full)
+        except KeyError:
+            pass
+    return ""
+
+
+def _u16(hexs):
+    try:
+        return bytes.fromhex(hexs if len(hexs) % 2 == 0 else "0" + hexs).decode("utf-16-be", "ignore")
+    except ValueError:
+        return ""
+
+
+def _cmap(data):
+    """A ToUnicode CMap -> ({code: text}, bytes per code)."""
+    t = data.decode("latin-1")
+    m = re.search(r"begincodespacerange\s*<([0-9A-Fa-f]+)>", t)
+    width = max(1, len(m.group(1)) // 2) if m else 1
+    table = {}
+    for block in re.findall(r"beginbfchar(.*?)endbfchar", t, re.S):
+        for src, dst in re.findall(r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]*)>", block):
+            table[int(src, 16)] = _u16(dst)
+    for block in re.findall(r"beginbfrange(.*?)endbfrange", t, re.S):
+        for lo, hi, dst in re.findall(r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(<[0-9A-Fa-f]*>|\[[^\]]*\])", block):
+            lo, hi = int(lo, 16), int(hi, 16)
+            if dst.startswith("["):
+                for i, d in enumerate(re.findall(r"<([0-9A-Fa-f]*)>", dst)):
+                    table[lo + i] = _u16(d)
+            else:
+                base, digits = int(dst[1:-1] or "0", 16), len(dst) - 2
+                for i in range(min(hi - lo, 4096) + 1):
+                    table[lo + i] = _u16(format(base + i, "0%dX" % digits))
+    return table, width
+
+
+class _Font(object):
+    def __init__(self, pdf, fd):
+        fd = fd if isinstance(fd, dict) else {}
+        self.width, self.map, self.widths, self.dw = 1, {}, {}, 500
+        if fd.get("Subtype") == "Type0":
+            self.width = 2  # no ToUnicode: the codes are glyph numbers and cannot be read
+            desc = pdf.get(fd.get("DescendantFonts"))
+            desc = pdf.get(desc[0]) if isinstance(desc, list) and desc else {}
+            desc = desc if isinstance(desc, dict) else {}
+            self.dw = _num(pdf.get(desc.get("DW"))) or 1000
+            w, i = pdf.get(desc.get("W")), 0
+            w = w if isinstance(w, list) else []
+            while i + 1 < len(w):  # [c [w1 w2 ...]] or [c_first c_last w]
+                first, nxt = pdf.get(w[i]), pdf.get(w[i + 1])
+                if isinstance(nxt, list):
+                    for k, val in enumerate(nxt):
+                        self.widths[int(first) + k] = _num(pdf.get(val)) or 0
+                    i += 2
+                elif i + 2 < len(w):
+                    for code in range(int(first), min(int(nxt), int(first) + 65536) + 1):
+                        self.widths[code] = _num(pdf.get(w[i + 2])) or 0
+                    i += 3
+                else:
+                    break
+        else:
+            widths, first = pdf.get(fd.get("Widths")), _num(pdf.get(fd.get("FirstChar"))) or 0
+            for k, val in enumerate(widths if isinstance(widths, list) else []):
+                self.widths[int(first) + k] = _num(pdf.get(val)) or 0
+            enc, diffs = pdf.get(fd.get("Encoding")), None
+            if isinstance(enc, dict):
+                enc, diffs = pdf.get(enc.get("BaseEncoding")), pdf.get(enc.get("Differences"))
+            codec = {"WinAnsiEncoding": "cp1252", "MacRomanEncoding": "mac_roman"}.get(str(enc or ""), "latin-1")
+            self.map = {i: bytes([i]).decode(codec, "replace").replace("\ufffd", "") for i in range(256)}
+            code = 0
+            for item in diffs if isinstance(diffs, list) else []:
+                if isinstance(item, int) and not isinstance(item, (bool, _Ref)):
+                    code = item
+                elif isinstance(item, _Name):
+                    self.map[code] = _glyph(item)
+                    code += 1
+        self.unmapped = ""
+        if isinstance(fd.get("ToUnicode"), _Ref):
+            try:
+                table, width = _cmap(pdf.stream_of(fd["ToUnicode"]))
+                if table:
+                    # With a ToUnicode map, a code left out of it is almost always the space
+                    # (macOS and PowerPoint leave it out), never the base encoding's letter.
+                    self.map, self.unmapped = table, " "
+                if fd.get("Subtype") == "Type0":
+                    self.width = width
+            except PDFError:
+                pass
+
+    def codes(self, raw):
+        if self.width == 2:
+            return [(raw[i] << 8) | raw[i + 1] for i in range(0, len(raw) - 1, 2)]
+        return list(raw)
+
+    def decode(self, raw):
+        return "".join(self.map.get(c, self.unmapped) for c in self.codes(raw))
+
+    def advance(self, raw):
+        """Width of the string in thousandths of the font size."""
+        return sum(self.widths.get(c, self.dw) for c in self.codes(raw))
+
+
+def _num(x):
+    return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
+
+
+class MiniPDF(object):
+    """Just enough of PDF to get the text of each page and its scanned pictures."""
+
+    def __init__(self, path):
+        self.data = Path(path).read_bytes()
+        if b"%PDF" not in self.data[:1024]:
+            raise PDFError("not a PDF file")
+        self.objs, self._fonts = {}, {}
+        self._scan()
+        self.trailer = self._trailer()
+        if "Encrypt" in self.trailer:
+            raise PDFError("the PDF is encrypted")
+
+    def _scan(self):
+        d, pos, packed = self.data, 0, []
+        while True:
+            m = _PDF_OBJ.search(d, pos)
+            if not m:
+                break
+            lx = _Lexer(d, m.end())
+            try:
+                val = lx.value()
+            except (PDFError, ValueError, IndexError, RecursionError):
+                pos = m.end()
+                continue
+            lx.skip()
+            stream = None
+            if isinstance(val, dict) and d.startswith(b"stream", lx.p):
+                start = lx.p + 6
+                start += 2 if d[start:start + 2] == b"\r\n" else 1 if d[start:start + 1] in (b"\n", b"\r") else 0
+                length, end = val.get("Length"), -1
+                if isinstance(length, int) and not isinstance(length, _Ref) and \
+                        d[start + length:start + length + 24].lstrip().startswith(b"endstream"):
+                    end = start + length
+                if end < 0:
+                    end = d.find(b"endstream", start)
+                    end = len(d) if end < 0 else end
+                stream, pos = (start, end), end
+            else:
+                pos = lx.p
+            self.objs[int(m.group(1))] = (val, stream)
+            if isinstance(val, dict) and val.get("Type") == "ObjStm" and stream:
+                packed.append(int(m.group(1)))
+        for num in packed:  # objects stored inside compressed object streams
+            head = self.objs[num][0]
+            try:
+                data = self.stream_of(num)
+                first = int(self.get(head.get("First")))
+                nums = [int(x) for x in data[:first].split()]
+            except (PDFError, ValueError, TypeError):
+                continue
+            for i in range(0, len(nums) - 1, 2):
+                if nums[i] not in self.objs:
+                    try:
+                        self.objs[nums[i]] = (_Lexer(data, first + nums[i + 1]).value(), None)
+                    except (PDFError, ValueError, IndexError, RecursionError):
+                        pass
+
+    def _trailer(self):
+        t = {}
+        for m in re.finditer(rb"trailer\s*<<", self.data):
+            try:
+                val = _Lexer(self.data, m.end() - 2).value()
+            except (PDFError, ValueError, IndexError, RecursionError):
+                continue
+            if isinstance(val, dict):
+                t.update(val)
+        for val, _ in self.objs.values():
+            if isinstance(val, dict) and val.get("Type") == "XRef":
+                t.update({k: val[k] for k in ("Root", "Encrypt") if k in val})
+        return t
+
+    def get(self, v):
+        for _ in range(32):
+            if not isinstance(v, _Ref):
+                return v
+            v = self.objs.get(int(v), (None, None))[0]
+        return None
+
+    def stream_of(self, ref):
+        entry = self.objs.get(int(ref))
+        if not entry or not entry[1]:
+            raise PDFError("missing stream %s" % ref)
+        head, (a, b) = entry
+        return _pdf_decode(self.data[a:b], self.get(head.get("Filter")), self.get(head.get("DecodeParms")))
+
+    def pages(self):
+        found, seen = [], set()
+
+        def walk(node, res, depth):
+            if isinstance(node, _Ref):
+                if int(node) in seen:
+                    return
+                seen.add(int(node))
+            node = self.get(node)
+            if not isinstance(node, dict) or depth > 60:
+                return
+            res = node.get("Resources", res)
+            kids = self.get(node.get("Kids"))
+            if node.get("Type") != "Page" and isinstance(kids, list):
+                for k in kids:
+                    walk(k, res, depth + 1)
+            elif node.get("Type") == "Page" or "Contents" in node:
+                found.append((node, self.get(res)))
+
+        root = self.get(self.trailer.get("Root"))
+        if not isinstance(root, dict):
+            root = next((v for v, _ in self.objs.values() if isinstance(v, dict) and v.get("Type") == "Catalog"), {})
+        walk(root.get("Pages"), None, 0)
+        if not found:
+            found = [(v, self.get(v.get("Resources"))) for _, (v, _) in sorted(self.objs.items())
+                     if isinstance(v, dict) and v.get("Type") == "Page"]
+        return found
+
+    def font(self, ref):
+        key = int(ref) if isinstance(ref, _Ref) else id(ref)
+        if key not in self._fonts:
+            self._fonts[key] = _Font(self, self.get(ref))
+        return self._fonts[key]
+
+    def texts(self):
+        out = []
+        for page, res in self.pages():
+            c = page.get("Contents")
+            refs = self.get(c)
+            refs = refs if isinstance(refs, list) else [c] if isinstance(c, _Ref) else []
+            parts = []
+            for r in refs:
+                try:
+                    parts.append(self.stream_of(r))
+                except PDFError:
+                    pass
+            text = self._text(b"\n".join(parts), res).translate(_LIGATURES)
+            text = re.sub(r"[ \t\u00a0]+", " ", text)
+            out.append(re.sub(r"\n\s*\n\s*\n+", "\n\n", "\n".join(l.strip() for l in text.split("\n"))).strip())
+        return out
+
+    def _text(self, content, res, depth=0):
+        res = res if isinstance(res, dict) else {}
+        fonts, xobjs = self.get(res.get("Font")), self.get(res.get("XObject"))
+        fonts, xobjs = fonts if isinstance(fonts, dict) else {}, xobjs if isinstance(xobjs, dict) else {}
+        out, ops, font = [], [], None
+        # Where the next glyph goes and where the last one ended, to tell a new line or a
+        # word gap from glyphs merely placed one after another.
+        st = {"fs": 1.0, "sx": 1.0, "sy": 1.0, "lx": 0.0, "ly": 0.0, "cx": 0.0, "tl": 0.0,
+              "end_x": None, "end_y": None}
+        ctm, saved = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], []  # graphics transform (q / Q / cm)
+
+        def dev(x, y):
+            return ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]
+
+        def brk(sep):
+            if out and not out[-1].endswith(("\n", sep)):
+                out.append(sep)
+
+        def draw(raw):
+            size = abs(st["fs"] * st["sy"] * (math.hypot(ctm[2], ctm[3]) or 1.0)) or 1.0
+            x, y = dev(st["cx"], st["ly"])
+            if st["end_y"] is not None:
+                if abs(y - st["end_y"]) > 0.5 * size:
+                    brk("\n")
+                elif x - st["end_x"] > 0.2 * size or st["end_x"] - x > 2 * size:
+                    brk(" ")
+            if font:
+                out.append(font.decode(raw))
+                st["cx"] += font.advance(raw) / 1000.0 * st["fs"] * st["sx"]
+            st["end_x"], st["end_y"] = dev(st["cx"], st["ly"])
+
+        def move(tx, ty):
+            st["lx"] += tx * st["sx"]
+            st["ly"] += ty * st["sy"]
+            st["cx"] = st["lx"]
+
+        lx = _Lexer(content, refs=False)
+        while not lx.at_end():
+            try:
+                tok = lx.value()
+            except (PDFError, ValueError, IndexError, RecursionError):
+                break
+            if not isinstance(tok, _Op):
+                ops.append(tok)
+                continue
+            n = [_num(x) for x in ops]
+            try:
+                if tok == "BI":  # inline image: skip its binary data
+                    m = re.compile(rb"\sID\s").search(content, lx.p - 3)
+                    e = re.compile(rb"\sEI(?=\s|$)").search(content, m.end()) if m else None
+                    lx.p = e.end() if e else len(content)
+                elif tok == "BT":
+                    st.update(sx=1.0, sy=1.0, lx=0.0, ly=0.0, cx=0.0)
+                elif tok == "q":
+                    saved.append(list(ctm))
+                elif tok == "Q":
+                    ctm = saved.pop() if saved else ctm
+                elif tok == "cm" and len(n) >= 6 and None not in n[-6:]:
+                    a, b, c, d, e, f = n[-6:]
+                    A, B, C, D, E, F = ctm
+                    ctm[:] = [a * A + b * C, a * B + b * D, c * A + d * C, c * B + d * D,
+                              e * A + f * C + E, e * B + f * D + F]
+                elif tok == "Tf" and len(ops) >= 2 and isinstance(ops[-2], _Name):
+                    ref = fonts.get(str(ops[-2]))
+                    font = self.font(ref) if ref is not None else None
+                    st["fs"] = n[-1] if n[-1] is not None else st["fs"]
+                elif tok == "TL" and n and n[-1] is not None:
+                    st["tl"] = n[-1]
+                elif tok in ("Td", "TD") and len(n) >= 2 and None not in n[-2:]:
+                    move(n[-2], n[-1])
+                    if tok == "TD":
+                        st["tl"] = -n[-1]
+                elif tok == "Tm" and len(n) >= 6 and None not in n[-6:]:
+                    a, b, c, d, e, f = n[-6:]
+                    st.update(sx=math.hypot(a, b) or 1.0, sy=(d if abs(d) >= abs(c) else c) or 1.0,
+                              lx=e, ly=f, cx=e)
+                elif tok in ("T*", "'", '"'):
+                    move(0, -st["tl"])
+                    if not st["tl"]:
+                        brk("\n")
+                    if tok != "T*" and ops and isinstance(ops[-1], bytes):
+                        draw(ops[-1])
+                elif tok == "Tj" and ops and isinstance(ops[-1], bytes):
+                    draw(ops[-1])
+                elif tok == "TJ" and ops and isinstance(ops[-1], list):
+                    for item in ops[-1]:
+                        if isinstance(item, bytes):
+                            draw(item)
+                        elif _num(item) is not None:
+                            st["cx"] -= _num(item) / 1000.0 * st["fs"] * st["sx"]
+                elif tok == "Do" and ops and isinstance(ops[-1], _Name) and depth < 4:
+                    ref = xobjs.get(str(ops[-1]))
+                    xo = self.get(ref)
+                    if isinstance(ref, _Ref) and isinstance(xo, dict) and xo.get("Subtype") == "Form":
+                        inner = self._text(self.stream_of(ref), self.get(xo.get("Resources")) or res, depth + 1)
+                        if inner.strip():
+                            brk("\n")
+                            out.append(inner)
+                            brk("\n")
+            except (PDFError, TypeError, ValueError, KeyError):
+                pass
+            ops = []
+        return "".join(out)
+
+    def page_images(self, numbers, dest):
+        """The pictures drawn on each page (a scanned page is one big picture)."""
+        pages, saved = self.pages(), []
+        for n in numbers:
+            if not 1 <= n <= len(pages):
+                continue
+            res = pages[n - 1][1] if isinstance(pages[n - 1][1], dict) else {}
+            xobjs = self.get(res.get("XObject"))
+            k = 0
+            for _, ref in sorted(xobjs.items()) if isinstance(xobjs, dict) else []:
+                img = self._image(ref)
+                if img:
+                    k += 1
+                    path = dest / ("page-%d-%d.%s" % (n, k, img[0]))
+                    path.write_bytes(img[1])
+                    saved.append(str(path))
+        return saved
+
+    def _image(self, ref):
+        entry = self.objs.get(int(ref)) if isinstance(ref, _Ref) else None
+        if not entry or not entry[1] or not isinstance(entry[0], dict) or entry[0].get("Subtype") != "Image":
+            return None
+        head, (a, b) = entry
+        w, h = self.get(head.get("Width")), self.get(head.get("Height"))
+        if not isinstance(w, int) or not isinstance(h, int) or w * h < 120 * 120:
+            return None  # icons and bullets
+        f = self.get(head.get("Filter"))
+        names = [str(x) for x in (f if isinstance(f, list) else [f] if f else [])]
+        raw = self.data[a:b]
+        if names and names[-1] in ("DCTDecode", "DCT"):
+            return "jpg", _pdf_decode(raw, names[:-1], None)
+        if names not in (["FlateDecode"], ["Fl"]) or self.get(head.get("BitsPerComponent")) != 8:
+            return None
+        cs = self.get(head.get("ColorSpace"))
+        if isinstance(cs, list) and cs and cs[0] == "ICCBased":
+            icc = self.objs.get(int(cs[1]), ({}, None))[0] if isinstance(cs[1], _Ref) else {}
+            ch = icc.get("N") if isinstance(icc, dict) else None
+        else:
+            ch = {"DeviceGray": 1, "CalGray": 1, "DeviceRGB": 3, "CalRGB": 3}.get(str(cs))
+        if ch not in (1, 3):
+            return None
+        data, row = _inflate(raw), w * ch
+        parms = self.get(head.get("DecodeParms"))
+        if isinstance(parms, dict) and isinstance(parms.get("Predictor"), int) and parms["Predictor"] >= 10:
+            rows = data[:(row + 1) * h]  # PNG row filters, exactly what a PNG file stores
+        else:
+            rows = b"".join(b"\x00" + data[i * row:(i + 1) * row] for i in range(h))
+        if len(rows) != (row + 1) * h:
+            return None
+
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0 if ch == 1 else 2, 0, 0, 0))
+        return "png", png + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+# ---- extract and render ---------------------------------------------------
+
+TEXT_INLINE_MAX = 24000  # longer output is saved to a file: a command's output is cut off around 30k
+
+
+def cache_dir(kind):
+    """Scratch space inside the data folder, emptied of anything older than two weeks."""
+    d = home() / ".cache" / kind
+    d.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - 14 * 86400
+    for p in d.iterdir():
+        try:
+            if p.stat().st_mtime < cutoff:
+                shutil.rmtree(str(p)) if p.is_dir() else p.unlink()
+        except OSError:
+            pass
+    return d
+
+
+def parse_pages(spec, total=None):
+    """"1-5,9" -> [1, 2, 3, 4, 5, 9], within 1..total when it is known."""
+    pages = []
+    for part in str(spec or "").replace(" ", "").split(","):
+        if not part:
+            continue
+        m = re.match(r"(\d+)(?:-(\d+))?$", part)
+        if not m:
+            raise LEError("pages must look like 3 or 1-5,9")
+        a, b = int(m.group(1)), int(m.group(2) or m.group(1))
+        for n in range(min(a, b), max(a, b) + 1):
+            if n >= 1 and (total is None or n <= total) and n not in pages:
+                pages.append(n)
+    return pages
+
+
+def page_ranges(numbers):
+    """[4, 9, 10, 11] -> "4,9-11"."""
+    out, run = [], []
+    for n in sorted(set(numbers)):
+        if run and n == run[-1] + 1:
+            run.append(n)
+        else:
+            if run:
+                out.append(str(run[0]) if len(run) == 1 else "%d-%d" % (run[0], run[-1]))
+            run = [n]
+    if run:
+        out.append(str(run[0]) if len(run) == 1 else "%d-%d" % (run[0], run[-1]))
+    return ",".join(out)
+
+
+def emit_text(text, src, args, meta):
+    """Print the text, or save it to a file when it is too long for one command output."""
+    if args.out:
+        target = Path(args.out).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        meta.update(written=str(target), chars=len(text), lines=text.count("\n") + 1)
+        out(meta)
+    elif len(text) <= TEXT_INLINE_MAX:
+        sys.stdout.write(text + "\n")
+        if meta:
+            sys.stdout.write("\n--- le.py: " + json.dumps(meta, ensure_ascii=False, separators=(",", ":")) + "\n")
+    else:
+        target = cache_dir("text") / ("%s-%s.md" % (slugify(src.stem)[:40], sha256(src)[:10]))
+        target.write_text(text, encoding="utf-8")
+        meta.update(text_file=str(target), chars=len(text), lines=text.count("\n") + 1,
+                    hint="Too long for one output: read text_file with the Read tool in parts (offset and limit).")
+        out(meta)
+
+
 def cmd_extract(args):
     p = Path(args.file).expanduser()
     kind = SUPPORTED.get(p.suffix.lower())
-    if kind not in ("docx", "pptx"):
-        raise LEError("extract only handles .docx and .pptx (read other files with the Read tool)")
-    try:
-        with zipfile.ZipFile(str(p)) as z:
-            text = extract_docx(z) if kind == "docx" else extract_pptx(z)
-            media = [n for n in z.namelist() if re.match(r"(word|ppt)/media/[^/]+$", n)]
-            saved = []
-            if args.media and media:
-                dest = Path(args.media).expanduser()
-                dest.mkdir(parents=True, exist_ok=True)
-                for n in media:
-                    target = dest / Path(n).name
-                    target.write_bytes(z.read(n))
-                    saved.append(str(target))
-    except (zipfile.BadZipFile, KeyError, ET.ParseError) as e:
-        raise LEError("could not read %s: %s" % (p.name, e))
-    if args.out:
-        Path(args.out).expanduser().write_text(text, encoding="utf-8")
-        out({"written": args.out, "chars": len(text), "embedded_images": len(media), "images_saved": saved})
+    if kind not in EXTRACTABLE:
+        raise LEError("extract only handles PDF, DOCX, PPTX, IPYNB and RTF (read other files with the Read tool)")
+    if not p.is_file():
+        raise LEError("file not found: %s" % p)
+    meta, images = {}, []
+    if kind == "pdf":
+        engine, pages = pdf_text(p)
+        chosen = parse_pages(args.pages, len(pages)) if args.pages else list(range(1, len(pages) + 1))
+        parts, little = [], []
+        for n in chosen:
+            body = pages[n - 1].strip()
+            if len(body) < 150:
+                little.append(n)
+            parts.append("[p. %d]\n%s" % (n, body))
+        text = "\n\n".join(parts)
+        meta = {"pages": len(pages), "engine": engine}
+        if args.pages:
+            meta["shown"] = page_ranges(chosen)
+        if little:
+            meta["little_text"] = page_ranges(little)
+            meta["render"] = 'le.py render "%s" --pages %s' % (p, page_ranges(little[:20]))
+    elif kind == "notebook":
+        text, images = extract_notebook(p)
+    elif kind == "rtf":
+        text = rtf_text(p)
     else:
-        sys.stdout.write(text + "\n")
-        if media and not args.media:
-            sys.stderr.write("note: %d embedded images; rerun with --media <dir> to extract them\n" % len(media))
+        try:
+            with zipfile.ZipFile(str(p)) as z:
+                text = extract_docx(z) if kind == "docx" else extract_pptx(z)
+                images = [(Path(n).name, z.read(n)) for n in z.namelist()
+                          if re.match(r"(word|ppt)/media/[^/]+$", n)]
+        except (zipfile.BadZipFile, KeyError, ET.ParseError) as e:
+            raise LEError("could not read %s: %s" % (p.name, e))
+    if images:
+        meta["embedded_images"] = len(images)
+        if args.media:
+            dest = Path(args.media).expanduser()
+            dest.mkdir(parents=True, exist_ok=True)
+            meta["images_saved"] = []
+            for name, data in images:
+                (dest / name).write_bytes(data)
+                meta["images_saved"].append(str(dest / name))
+        else:
+            meta["images_hint"] = "rerun with --media <folder inside the data home> to save them, then Read them"
+    emit_text(text, p, args, meta)
+
+
+def cmd_render(args):
+    """Turn PDF pages into images, to read figures, formulas and scanned pages."""
+    p = Path(args.file).expanduser()
+    if not p.is_file():
+        raise LEError("file not found: %s" % p)
+    if SUPPORTED.get(p.suffix.lower()) != "pdf":
+        raise LEError("render only handles PDF files (images are read directly)")
+    pages = parse_pages(args.pages)
+    if not pages:
+        raise LEError("say which pages, for example --pages 3,7-9")
+    if len(pages) > 20:
+        raise LEError("at most 20 pages per call")
+    dest = cache_dir("pages") / sha256(p)[:12]
+    dest.mkdir(exist_ok=True)
+    engine, images = pdf_render(p, pages, max(400, min(2400, args.width)), dest)
+    res = {"images": images, "engine": engine, "hint": "Open each image with the Read tool."}
+    if engine == "builtin":
+        res["note"] = "these are the pictures embedded in the pages (scans, photos), not full page drawings"
+    out(res)
 
 
 # ----------------------------------------------------------------------------
@@ -1160,6 +2217,59 @@ def cmd_roadmap_show(args):
             {"id": t["id"], "name": t["name"], "weight": t["weight"], "status": st[t["id"]],
              "cards": len(by.get(t["id"], [])), "sources": t["sources"]} for t in u["topics"]]})
     out({"exam": exam["name"], "units": units})
+
+
+def cmd_labels_show(args):
+    """Every name and short text the dashboard shows, to translate them after a language change."""
+    profile = get_profile()
+    d = exam_dir(profile, args.exam)
+    exam = load(d / "exam.json")
+    index = load(d / "sources" / "index.json", default={"sources": []})
+    out({"exam": exam["name"],
+         "units": [{"id": u["id"], "name": u["name"]} for u in exam["units"]],
+         "topics": [{"id": t["id"], "name": t["name"], "summary": t.get("summary", ""),
+                     "concepts": t.get("concepts", [])} for _, t in all_topics(exam)],
+         "sources": [{"id": s["id"], "title": s.get("title") or s["name"], "summary": s.get("summary", "")}
+                     for s in index["sources"]]})
+
+
+def cmd_labels_set(args):
+    """Rename units, topics and materials by id. Progress, questions and notes stay as they are."""
+    data = read_stdin_json()
+    if not isinstance(data, dict):
+        raise LEError('payload must be {"units": [...], "topics": [...], "sources": [...]}')
+    profile = get_profile()
+    d = exam_dir(profile, args.exam)
+    exam = load(d / "exam.json")
+    index = load(d / "sources" / "index.json", default={"version": 1, "next_id": 1, "sources": []})
+    units = {u["id"]: u for u in exam["units"]}
+    topics = {t["id"]: t for _, t in all_topics(exam)}
+    sources = {s["id"]: s for s in index["sources"]}
+    plan = []
+    for group, table, fields in (("units", units, ("name",)), ("topics", topics, ("name", "summary", "concepts")),
+                                 ("sources", sources, ("title", "summary"))):
+        for item in data.get(group, []):
+            if not isinstance(item, dict) or item.get("id") not in table:
+                raise LEError("%s: unknown id %r" % (group, item.get("id") if isinstance(item, dict) else item))
+            for f in fields:
+                if f not in item:
+                    continue
+                val = item[f]
+                if f == "concepts":
+                    if not isinstance(val, list):
+                        raise LEError("topic concepts must be a list of short strings")
+                    val = [str(c).strip()[:60] for c in val if str(c).strip()][:8]
+                elif not isinstance(val, str) or (f in ("name", "title") and not val.strip()):
+                    raise LEError("%s %s: %s must be a non-empty string" % (group, item["id"], f))
+                plan.append((table[item["id"]], f, val.strip() if isinstance(val, str) else val))
+    if not plan:
+        raise LEError("nothing to change")
+    backup("labels", d)
+    for target, f, val in plan:
+        target[f] = val
+    save(d / "exam.json", exam)
+    save(d / "sources" / "index.json", index)
+    out({"changed": len(plan)})
 
 
 def cmd_cards_add(args):
@@ -1288,13 +2398,101 @@ def cmd_mock(args):
                  "from the studied topics and send them as new_cards when recording."})
 
 
+def source_ids(topic):
+    """{"s1", "s3"} from a topic's sources ("s1 p.3-8", "s3")."""
+    return {m.group(1) for m in (re.match(r"\s*(s\d+)", s) for s in topic.get("sources", [])) if m}
+
+
+def resolve_targets(exam, index, words):
+    """Topic, unit or source ids (t3, u2, s1), or words from their names -> topic ids."""
+    pairs = all_topics(exam)
+    ids_like = [w for w in words if re.fullmatch(r"[tus]\d+", w.strip().lower())]
+    phrases = ids_like + ([" ".join(w for w in words if w not in ids_like)]
+                          if len(ids_like) < len(words) else [])
+    chosen, unknown = [], []
+    for raw in phrases:
+        key = raw.strip().lower()
+        if not key:
+            continue
+        if re.fullmatch(r"t\d+", key):
+            ids = [t["id"] for _, t in pairs if t["id"] == key]
+        elif re.fullmatch(r"u\d+", key):
+            ids = [t["id"] for u, t in pairs if u["id"] == key]
+        elif re.fullmatch(r"s\d+", key):
+            ids = [t["id"] for _, t in pairs if key in source_ids(t)]
+        else:
+            n = norm(key)
+            srcs = {s["id"] for s in index["sources"] if n in norm(s.get("title") or "") or n in norm(s["name"])}
+            ids = ([t["id"] for _, t in pairs if n in norm(t["name"])]
+                   or [t["id"] for u, t in pairs if n in norm(u["name"])]
+                   or [t["id"] for _, t in pairs if srcs & source_ids(t)])
+        if ids:
+            chosen += [i for i in ids if i not in chosen]
+        else:
+            unknown.append(raw.strip())
+    return chosen, unknown
+
+
+def cmd_review(args):
+    """A review of chosen topics, units or materials, whether or not their questions are due."""
+    profile = get_profile()
+    d = exam_dir(profile, args.exam)
+    exam, cards = load(d / "exam.json"), load(d / "cards.json")
+    index = load(d / "sources" / "index.json", default={"sources": []})
+    by, st = cards_by_topic(cards), statuses(exam, cards)
+    if args.targets:
+        ids, unknown = resolve_targets(exam, index, args.targets)
+        if not ids:
+            listing = ", ".join("%s %s" % (t["id"], t["name"]) for _, t in all_topics(exam))[:900]
+            raise LEError("nothing matches %s. Topics: %s" % (", ".join(repr(u) for u in unknown), listing))
+    else:  # no target: the weakest studied topics, else the ones with most mistakes
+        unknown = []
+        weak = focus_topics(exam, cards, limit=3)[1]
+        ids = [r["id"] for r in weak]
+        if not ids:
+            ranked = sorted((t for _, t in all_topics(exam) if t.get("studied")),
+                            key=lambda t: -sum(c.get("lapses", 0) for c in by.get(t["id"], [])))
+            ids = [t["id"] for t in ranked[:2]]
+        if not ids:
+            raise LEError("nothing studied yet: run a study session first (/learn)")
+    key = today().isoformat()
+
+    def priority(c):  # overdue first, then the most often failed, then the shakiest last answer
+        return (c.get("due", key) > key, -c.get("lapses", 0), last_q(c) if last_q(c) is not None else -1, c["id"])
+
+    pool = sorted((c for c in cards["cards"] if c["topic"] in ids), key=priority)
+    names = {t["id"]: (u["name"], t) for u, t in all_topics(exam)}
+    questions = []
+    for c in pool[:args.n]:
+        item = {k: c[k] for k in ("id", "topic", "type", "prompt", "options", "answer", "accepted",
+                                  "rubric", "explanation", "source") if k in c}
+        item["topic_name"] = names[c["topic"]][1]["name"]
+        questions.append(item)
+    topics = []
+    for tid in ids:
+        unit, t = names[tid]
+        acc, n_hist = topic_accuracy(by.get(tid, []))
+        topics.append({"id": tid, "name": t["name"], "unit": unit, "status": st[tid], "studied": t.get("studied"),
+                       "accuracy": acc, "cards": len(by.get(tid, [])), "summary": t.get("summary", ""),
+                       "concepts": t.get("concepts", []), "sources": t["sources"],
+                       "notes_cmd": "le.py notes %s" % tid})
+    session = session_header(profile, exam, "review")
+    session.update(questions=questions, topics=topics)
+    path = d / ".session.json"
+    save(path, session)
+    out({"session_file": str(path), "exam": exam["slug"], "topics": [t["name"] for t in topics],
+         "questions": len(questions), "not_studied_yet": [t["name"] for t in topics if not t["studied"]],
+         "unknown": unknown,
+         "hint": "Read session_file with the Read tool. It holds the answers: never show it."})
+
+
 def cmd_record(args):
     data = read_stdin_json()
     if not isinstance(data, dict):
         raise LEError("payload must be an object")
     kind = data.get("kind", "study")
-    if kind not in ("study", "mock"):
-        raise LEError("kind must be study or mock")
+    if kind not in ("study", "mock", "review"):
+        raise LEError("kind must be study, review or mock")
     profile = get_profile()
     d = exam_dir(profile, args.exam)
     exam, cards, log = load(d / "exam.json"), load(d / "cards.json"), read_log(d)
@@ -1459,7 +2657,7 @@ def cmd_record(args):
 # commands: dashboard
 # ----------------------------------------------------------------------------
 
-def dashboard_data(profile, d):
+def dashboard_data(profile, d, exams=None):
     exam, cards, log = load(d / "exam.json"), load(d / "cards.json"), read_log(d)
     index = load(d / "sources" / "index.json", default={"sources": []})
     day = today()
@@ -1469,6 +2667,10 @@ def dashboard_data(profile, d):
     by, st = cards_by_topic(cards), statuses(exam, cards)
     plan = make_plan(exam, cards, log, day)
     src_names = {s["id"]: s.get("title") or s["name"] for s in index["sources"]}
+    slug = d.name
+
+    def review_cmd(target):  # pasted into Claude Code from the dashboard's "Review" buttons
+        return "/learn:review %s %s" % (slug, target)
 
     units = []
     for u in exam["units"]:
@@ -1480,10 +2682,13 @@ def dashboard_data(profile, d):
                            "status": st[t["id"]], "studied": t.get("studied"),
                            "summary": t.get("summary", ""), "concepts": t.get("concepts", []),
                            "cards": len(tc), "answers": n_hist, "accuracy": acc,
-                           "due": sum(1 for c in tc if c["due"] <= key),
+                           "due": sum(1 for c in tc if c["due"] <= key), "review": review_cmd(t["id"]),
                            "sources": [src_names.get(m.group(1), r) if m else r for r, m in
                                        ((r, re.match(r"\s*(s\d+)", r)) for r in t["sources"])]})
         units.append({"id": u["id"], "name": u["name"], "topics": topics})
+    covered = set()
+    for _, t in all_topics(exam):
+        covered |= source_ids(t)
 
     per_day = {}
     for e in log:
@@ -1535,8 +2740,11 @@ def dashboard_data(profile, d):
         "level": level_info(profile.get("xp", 0)), "streak": streak(profile, day),
         "studied_today": key in profile.get("study_days", []), "freezes": profile.get("freezes", 0),
         "goal_done_today": key in profile.get("goal_days", []),
-        "exam": {"name": exam["name"], "exam_date": exam.get("exam_date"), "goal": exam.get("goal"),
+        "exam": {"slug": slug, "name": exam["name"], "exam_date": exam.get("exam_date"), "goal": exam.get("goal"),
                  "exam_type": exam.get("exam_type"), "daily_minutes": exam.get("daily_minutes")},
+        "exams": [{"slug": e["slug"], "name": e["name"], "days_left": e.get("days_left"),
+                   "href": "../%s/dashboard.html" % e["slug"], "current": e["slug"] == slug}
+                  for e in (exams or []) if e.get("name")],
         "plan": plan, "units": units, "activity": activity, "trend": trend, "forecast": forecast,
         "achievements": achievements,
         "totals": {"answers": total_answers,
@@ -1547,7 +2755,8 @@ def dashboard_data(profile, d):
                    "mastered": sum(1 for v in st.values() if v == "mastered")},
         "sources": [{"name": s.get("title") or s["name"], "file": s["name"] if s.get("path") else "",
                      "type": s["type"],
-                     "pages": s.get("pages"), "added": s.get("added"), "summary": s.get("summary", "")}
+                     "pages": s.get("pages"), "added": s.get("added"), "summary": s.get("summary", ""),
+                     "review": review_cmd(s["id"]) if s["id"] in covered else None}
                     for s in index["sources"]],
         "sessions": [dict(e) for e in log[-12:]][::-1],
         "mocks": [{"date": e["date"], "pct": e["mock"]["pct"], "score": e["mock"]["score"],
@@ -1555,21 +2764,35 @@ def dashboard_data(profile, d):
     }
 
 
+def write_dashboard(profile, d, html, exams):
+    blob = json.dumps(dashboard_data(profile, d, exams), ensure_ascii=False).replace("</", "<\\/")
+    target = d / "dashboard.html"
+    tmp = target.with_name("dashboard.html.tmp")
+    tmp.write_text(html.replace("/*__LE_DATA__*/null", blob), encoding="utf-8")
+    os.replace(str(tmp), str(target))
+    return target
+
+
 def cmd_dashboard(args):
+    """Builds the dashboard of every exam (so the exam switcher never links to a stale page)
+    and opens the one asked for, or the active one."""
     profile = get_profile()
     d = exam_dir(profile, args.exam)
     template = Path(__file__).resolve().parent / "dashboard_template.html"
     if not template.exists():
         raise LEError("dashboard template not found next to le.py")
     html = template.read_text(encoding="utf-8")
-    marker = "/*__LE_DATA__*/null"
-    if marker not in html:
+    if "/*__LE_DATA__*/null" not in html:
         raise LEError("dashboard template is missing its data marker")
-    blob = json.dumps(dashboard_data(profile, d), ensure_ascii=False).replace("</", "<\\/")
-    target = d / "dashboard.html"
-    tmp = target.with_name("dashboard.html.tmp")
-    tmp.write_text(html.replace(marker, blob), encoding="utf-8")
-    os.replace(str(tmp), str(target))
+    exams = exams_overview(profile)
+    target = write_dashboard(profile, d, html, exams)
+    others = []
+    for e in exams:
+        if e["slug"] != d.name and e.get("name"):
+            try:
+                others.append(str(write_dashboard(profile, home() / e["slug"], html, exams)))
+            except Exception:  # a broken exam must not stop the one asked for
+                pass
     opened = False
     if not args.no_open:
         try:
@@ -1577,7 +2800,7 @@ def cmd_dashboard(args):
             opened = bool(webbrowser.open(target.as_uri()))
         except Exception:
             opened = False
-    out({"dashboard": str(target), "opened": opened})
+    out({"dashboard": str(target), "opened": opened, "other_dashboards": others})
 
 
 # ----------------------------------------------------------------------------
@@ -1685,22 +2908,29 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd")
     sub.required = True
 
-    def add(name, fn, help_):
+    def add(name, fn, help_, writes=False):
         sp = sub.add_parser(name, help=help_)
-        sp.set_defaults(fn=fn)
+        sp.set_defaults(fn=fn, writes=writes)
+        sp.add_argument("--exam", default=argparse.SUPPRESS, help=argparse.SUPPRESS)  # also after the command
         return sp
 
-    add("init", cmd_init, "create/update profile and exam (JSON on stdin)")
+    def subcmd(group, name, fn, writes=False):
+        sp = group.add_parser(name)
+        sp.set_defaults(fn=fn, writes=writes)
+        sp.add_argument("--exam", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+        return sp
+
+    add("init", cmd_init, "create/update profile and exam (JSON on stdin)", True)
     add("status", cmd_status, "what to do today").add_argument("--hook", action="store_true")
     add("list", cmd_list, "list exams")
-    add("switch", cmd_switch, "set the active exam").add_argument("slug")
+    add("switch", cmd_switch, "set the active exam", True).add_argument("slug")
 
     src = add("source", None, "materials").add_subparsers(dest="sub")
     src.required = True
-    sp = src.add_parser("check"); sp.add_argument("paths", nargs="+"); sp.set_defaults(fn=cmd_source_check)
-    sp = src.add_parser("add"); sp.set_defaults(fn=cmd_source_add)
-    sp = src.add_parser("list"); sp.set_defaults(fn=cmd_source_list)
-    sp = src.add_parser("remove"); sp.add_argument("id"); sp.set_defaults(fn=cmd_source_remove)
+    subcmd(src, "check", cmd_source_check).add_argument("paths", nargs="+")
+    subcmd(src, "add", cmd_source_add, True)
+    subcmd(src, "list", cmd_source_list)
+    subcmd(src, "remove", cmd_source_remove, True).add_argument("id")
 
     sp = add("find", cmd_find, "recent study files in Downloads, Desktop, Documents")
     sp.add_argument("dirs", nargs="*"); sp.add_argument("--days", type=int, default=120)
@@ -1708,30 +2938,41 @@ def build_parser():
     sp = add("notes", cmd_notes, "the part of the notes a topic needs")
     sp.add_argument("topic", nargs="?"); sp.add_argument("--ref", action="append", default=[])
 
-    sp = add("extract", cmd_extract, "text from .docx / .pptx")
+    sp = add("extract", cmd_extract, "text of a PDF, DOCX, PPTX, IPYNB or RTF file")
     sp.add_argument("file"); sp.add_argument("--out"); sp.add_argument("--media")
+    sp.add_argument("--pages", help="PDF pages, e.g. 1-20 or 3,7-9")
+    sp = add("render", cmd_render, "PDF pages as images, for figures and scans")
+    sp.add_argument("file"); sp.add_argument("--pages", required=True)
+    sp.add_argument("--width", type=int, default=1400)
 
     rm = add("roadmap", None, "roadmap").add_subparsers(dest="sub")
     rm.required = True
-    sp = rm.add_parser("set"); sp.add_argument("--drop", action="store_true"); sp.set_defaults(fn=cmd_roadmap_set)
-    sp = rm.add_parser("show"); sp.set_defaults(fn=cmd_roadmap_show)
+    subcmd(rm, "set", cmd_roadmap_set, True).add_argument("--drop", action="store_true")
+    subcmd(rm, "show", cmd_roadmap_show)
+    lb = add("labels", None, "names of units, topics and materials").add_subparsers(dest="sub")
+    lb.required = True
+    subcmd(lb, "show", cmd_labels_show)
+    subcmd(lb, "set", cmd_labels_set, True)
 
     cd = add("cards", None, "question bank").add_subparsers(dest="sub")
     cd.required = True
-    sp = cd.add_parser("add"); sp.set_defaults(fn=cmd_cards_add)
-    sp = cd.add_parser("list"); sp.add_argument("--topic"); sp.set_defaults(fn=cmd_cards_list)
+    subcmd(cd, "add", cmd_cards_add, True)
+    subcmd(cd, "list", cmd_cards_list).add_argument("--topic")
 
-    add("next", cmd_next, "prepare today's session").add_argument("--extra", action="store_true")
-    sp = add("mock", cmd_mock, "prepare a mock exam")
+    add("next", cmd_next, "prepare today's session", True).add_argument("--extra", action="store_true")
+    sp = add("review", cmd_review, "prepare a review of chosen topics, units or materials", True)
+    sp.add_argument("targets", nargs="*", help="t3, u2, s1 or words from a name; none = weakest topics")
+    sp.add_argument("-n", type=int, default=10)
+    sp = add("mock", cmd_mock, "prepare a mock exam", True)
     sp.add_argument("-n", type=int, default=20); sp.add_argument("--seed", type=int)
-    add("record", cmd_record, "save a session (JSON on stdin)")
+    add("record", cmd_record, "save a session (JSON on stdin)", True)
 
-    add("dashboard", cmd_dashboard, "build dashboard.html").add_argument("--no-open", action="store_true")
-    add("backup", cmd_backup, "snapshot the state files")
+    add("dashboard", cmd_dashboard, "build dashboard.html", True).add_argument("--no-open", action="store_true")
+    add("backup", cmd_backup, "snapshot the state files", True)
     add("export", cmd_export, "zip an exam").add_argument("--out")
-    sp = add("restore", cmd_restore, "restore an exported zip")
+    sp = add("restore", cmd_restore, "restore an exported zip", True)
     sp.add_argument("zip"); sp.add_argument("--force", action="store_true")
-    sp = add("delete", cmd_delete, "move an exam to .trash")
+    sp = add("delete", cmd_delete, "move an exam to .trash", True)
     sp.add_argument("slug"); sp.add_argument("--confirm", default="")
     return p
 
@@ -1744,7 +2985,10 @@ def main(argv=None):
             pass
     args = build_parser().parse_args(argv)
     try:
-        args.fn(args)
+        if args.fn in (cmd_init, cmd_source_add, cmd_roadmap_set, cmd_labels_set, cmd_cards_add, cmd_record):
+            _STDIN[:] = [sys.stdin.read()]
+        with write_lock() if getattr(args, "writes", False) else contextlib.nullcontext():
+            args.fn(args)
     except LEError as e:
         sys.stderr.write(json.dumps({"error": str(e)}, ensure_ascii=False) + "\n")
         return 1

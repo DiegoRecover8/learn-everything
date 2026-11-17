@@ -2,6 +2,8 @@
 
 The daily session: review what is due, learn what is new, practise it, record everything.
 
+Every `le.py` command below carries `--exam <slug>` for the exam chosen at the start (rule 11 of `SKILL.md`); it is left out here to keep the examples short.
+
 Also read `references/exercises.md` (how to ask and grade) and, if there is a new topic today, `references/teaching.md` (how to explain).
 
 ## 1. Recap, then get today's session
@@ -89,6 +91,8 @@ Use what `record` returned, exactly:
 - Tomorrow: `tomorrow.reviews_due` reviews and `tomorrow.new_topics` new topics.
 
 Finish with one honest sentence on what went well and one on what to watch. Three or four lines in total, not a report.
+
+Then offer one more step with AskUserQuestion: "🔁 Review <the weakest topic>" (from `recap.weak`, or a topic that just dropped in `topic_changes`), "🔁 Review another topic or material", "✋ Done for today". A review follows `../review/SKILL.md` (path from the learn skill's base directory) with that topic.
 
 ## Special cases
 

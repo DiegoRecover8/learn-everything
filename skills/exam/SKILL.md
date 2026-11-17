@@ -10,7 +10,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion
 
 A rehearsal under exam conditions: no feedback until the end, then a mark and a breakdown.
 
-**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Also read `../learn/references/exercises.md` for how to ask and grade. Run `le.py status` first for the learner's language.
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Also read `../learn/references/exercises.md` for how to ask and grade. Run `le.py status` first for the learner's language. If `choose_exam` is true and no exam was chosen yet in this conversation, ask which exam (AskUserQuestion, one option per exam in `exams`), then put `--exam <slug>` in every command.
 
 ## 1. Agree the format
 

@@ -28,7 +28,10 @@
   "topic_n": "{n} nouveaux thèmes",
   "add": "📎 Prochaine étape : ajoute tes documents avec /learn:add",
   "roadmap": "🗺️ Le parcours n'est pas encore créé — lance /learn",
-  "done": "✅ Objectif du jour atteint — /learn pour t'entraîner encore"
+  "done": "✅ Objectif du jour atteint — /learn pour t'entraîner encore",
+  "others": "📚 Aussi : {list}",
+  "in_days": "{n} {days}",
+  "exam_today_short": "aujourd'hui"
  },
  "edu": {
   "secondary": "Secondaire / lycée",
@@ -119,7 +122,15 @@
   "strong": "Points forts",
   "weak": "À travailler",
   "focusEmpty": "Réponds à quelques questions par thème pour voir tes points forts et faibles.",
-  "pasted": "Collé dans le chat"
+  "pasted": "Collé dans le chat",
+  "review1": "révision",
+  "newTopic": "nouveau thème",
+  "reviewTopic": "🔁 Réviser ce thème",
+  "reviewSource": "Réviser les thèmes de ce support",
+  "copied": "Copié. Collez-le dans Claude Code et appuyez sur Entrée :",
+  "copyFail": "Copiez cette commande dans Claude Code :",
+  "reviewKind": "Révision",
+  "exams": "Vos examens"
  },
  "achievements": {
   "first_session": ["Premier pas", "Termine ta première séance"],

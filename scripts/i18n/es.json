@@ -28,7 +28,10 @@
   "topic_n": "{n} temas nuevos",
   "add": "📎 Siguiente paso: añade tus materiales con /learn:add",
   "roadmap": "🗺️ Falta crear el roadmap — ejecuta /learn",
-  "done": "✅ Meta de hoy cumplida — /learn para practicar más"
+  "done": "✅ Meta de hoy cumplida — /learn para practicar más",
+  "others": "📚 También: {list}",
+  "in_days": "{n} {days}",
+  "exam_today_short": "hoy"
  },
  "edu": {
   "secondary": "Secundaria / Bachillerato",
@@ -119,7 +122,15 @@
   "strong": "Puntos fuertes",
   "weak": "A mejorar",
   "focusEmpty": "Responde algunas preguntas de cada tema para ver tus puntos fuertes y débiles.",
-  "pasted": "Pegado en el chat"
+  "pasted": "Pegado en el chat",
+  "review1": "repaso",
+  "newTopic": "tema nuevo",
+  "reviewTopic": "🔁 Repasar este tema",
+  "reviewSource": "Repasar los temas de este material",
+  "copied": "Copiado. Pégalo en Claude Code y pulsa Intro:",
+  "copyFail": "Copia este comando en Claude Code:",
+  "reviewKind": "Repaso",
+  "exams": "Tus exámenes"
  },
  "achievements": {
   "first_session": ["Primer paso", "Completa tu primera sesión"],

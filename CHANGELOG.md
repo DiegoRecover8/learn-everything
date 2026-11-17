@@ -4,8 +4,27 @@ All notable changes are listed here. The project follows [semantic versioning](h
 
 ## Unreleased
 
+## 0.2.1 — 2026-11-17
+
+### Fixed
+
+- **PDFs no longer need poppler.** `le.py extract` reads the text of a PDF page by page with poppler if it is installed, macOS's own PDF reader otherwise, or a built-in reader as a last resort, and `le.py render` turns pages with figures or scans into images. Nothing has to be installed, and reading text instead of page images uses far fewer tokens.
+- **Setup showed only four languages.** A question can hold four options at most, so the six languages are now split into the most likely ones plus "🌍 More languages".
+- **"Type the exact date" was hard to find.** Setup no longer points to the hidden "Other" choice: questions that may need typing (exact date, name, minutes) have an explicit "✏️" option.
+- **After changing the language, most of the dashboard stayed in the old one.** The unit, topic and material names were written in the first language. Setup now offers to translate them (`le.py labels show` / `labels set`), keeping all progress, and new roadmaps are always written in the learner's language.
+- The dashboard said "+ 1 new topics".
+
 ### Added
 
+- **Choose the exam when you start.** With several exams, `/learn` asks which one to study (with days left and today's work for each), and what to do: today's plan, a review or a mock exam.
+- **Several sessions in parallel.** Each conversation sticks to its exam (`--exam` on every command), and writes take turns through a lock, so two windows studying different subjects never lose XP or streak days.
+- **`/learn:review`**: review a topic, a unit, everything from one material, or your weakest topics, due or not. It is also offered at the end of each session.
+- **"Review" buttons in the dashboard**, on each topic and material: they copy the command (`/learn:review fisica-ii t3`) to paste into Claude Code.
+- **One dashboard per exam, with a switcher** at the top to jump between them.
+- The session-start lines mention your other exams.
+- **Jupyter notebooks (.ipynb)** and **RTF** files as materials.
+- Long extracted texts are saved to a file to read in parts, instead of being cut off.
+- README: "Do I need to know how to code?" in the FAQ.
 - Banner at the top of the README and the plugin icon (`.claude-plugin/icon.png`).
 
 ## 0.2.0 — 2026-11-16

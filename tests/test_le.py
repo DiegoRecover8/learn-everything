@@ -197,6 +197,154 @@ class TestExtract(Base):
         bad.write_text("not a zip")
         self.assertIn("could not read", self.run_le("extract", bad, ok=False))
 
+    def test_notebook(self):
+        png = __import__("base64").b64encode(b"\x89PNG fake").decode()
+        nb = {"metadata": {"kernelspec": {"language": "python"}}, "cells": [
+            {"cell_type": "markdown", "source": ["# Regresión\n", "La recta $y = ax + b$."]},
+            {"cell_type": "code", "source": "print(1 + 1)", "outputs": [
+                {"output_type": "stream", "text": ["2\n"]},
+                {"output_type": "display_data", "data": {"image/png": png, "text/plain": "<Figure>"}}]},
+            {"cell_type": "code", "source": "1/0", "outputs": [
+                {"output_type": "error", "ename": "ZeroDivisionError", "evalue": "division by zero"}]}]}
+        f = self.files / "clase.ipynb"
+        f.write_text(json.dumps(nb), encoding="utf-8")
+        text = self.run_le("extract", f)
+        for part in ("[cell 1]", "# Regresión", "```python\nprint(1 + 1)\n```", "Output:", "[image: cell-2-2.png]",
+                     "ZeroDivisionError: division by zero", '"embedded_images":1'):
+            self.assertIn(part, text)
+        r = self.run_le("extract", f, "--out", self.files / "nb.md", "--media", self.files / "img")
+        self.assertEqual((self.files / "img" / "cell-2-2.png").read_bytes(), b"\x89PNG fake")
+        self.assertEqual(r["embedded_images"], 1)
+
+    def test_rtf(self):
+        f = self.files / "apuntes.rtf"
+        f.write_bytes(rb"{\rtf1\ansi{\fonttbl{\f0 Helvetica;}}{\*\generator Test;}\f0 Tema 1: Electrost\'e1tica\par "
+                      rb"Ley de Coulomb \u8212? F = k\par{\info{\title secret}}Fin}")
+        real = le.shutil.which
+        le.shutil.which = lambda name: None  # the built-in reader, not macOS textutil
+        try:
+            text = le.rtf_text(f)
+        finally:
+            le.shutil.which = real
+        self.assertEqual(text, "Tema 1: Electrostática\nLey de Coulomb — F = k\nFin")
+
+    def test_long_output_goes_to_a_file(self):
+        w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        body = "".join("<w:p><w:r><w:t>Párrafo número %d con bastante texto de relleno.</w:t></w:r></w:p>" % i
+                       for i in range(1200))
+        f = self.files / "largo.docx"
+        with zipfile.ZipFile(str(f), "w") as z:
+            z.writestr("word/document.xml", '<w:document xmlns:w="%s"><w:body>%s</w:body></w:document>' % (w, body))
+        r = self.run_le("extract", f)
+        self.assertGreater(r["chars"], le.TEXT_INLINE_MAX)
+        saved = Path(r["text_file"])
+        self.assertTrue(str(saved).startswith(str(self.home)), "scratch files stay inside the data folder")
+        self.assertIn("Párrafo número 1199", saved.read_text(encoding="utf-8"))
+
+
+def build_pdf(objects, root=1):
+    """A small PDF from {number: bytes body} (streams as (dict bytes, data)). No xref: le.py scans objects."""
+    import zlib as _z
+    out = [b"%PDF-1.5\n"]
+    for num, body in sorted(objects.items()):
+        if isinstance(body, tuple):
+            head, data = body
+            out.append(b"%d 0 obj\n<< %s /Length %d >>\nstream\n%s\nendstream\nendobj\n" % (num, head, len(data), data))
+        else:
+            out.append(b"%d 0 obj\n%s\nendobj\n" % (num, body))
+    out.append(b"trailer\n<< /Root %d 0 R >>\n%%%%EOF\n" % root)
+    return b"".join(out)
+
+
+class TestPDF(Base):
+    """The built-in reader, used when neither poppler nor macOS PDFKit is there."""
+
+    def setUp(self):
+        super().setUp()
+        import zlib as _z
+        page1 = _z.compress(b"BT /F1 12 Tf 72 720 Td (Tema 1: Electrost\\341tica) Tj 0 -14 Td "
+                            b"[(Ley)-300(de)-300(Coulomb)] TJ T* (ignored-without-leading) Tj ET")
+        page2 = b"BT /F2 10 Tf 1 0 0 1 72 700 Tm <000100020003> Tj ET q 200 0 0 150 0 0 cm /Im1 Do Q"
+        tounicode = (b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap 1 begincodespacerange "
+                     b"<0000> <FFFF> endcodespacerange 1 beginbfchar <0001> <03A9> endbfchar "
+                     b"1 beginbfrange <0002> <0003> <0061> endbfrange endcmap end end")
+        font1 = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+        packed = b"4 0 " + font1  # font 4 lives inside a compressed object stream, as in modern PDFs
+        self.jpeg = b"\xff\xd8\xff\xe0fake-jpeg-bytes\xff\xd9"
+        self.pdf = self.files / "apuntes.pdf"
+        self.pdf.write_bytes(build_pdf({
+            1: b"<< /Type /Catalog /Pages 2 0 R >>",
+            2: b"<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 /Resources << /Font << /F1 4 0 R >> >> >>",
+            3: b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>",
+            5: (b"/Filter /FlateDecode", page1),
+            6: b"<< /Type /Page /Parent 2 0 R /Contents 7 0 R /Resources << /Font << /F2 8 0 R >> "
+               b"/XObject << /Im1 10 0 R >> >> >>",
+            7: (b"", page2),
+            8: b"<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H /ToUnicode 9 0 R >>",
+            9: (b"", tounicode),
+            10: (b"/Type /XObject /Subtype /Image /Width 200 /Height 150 /BitsPerComponent 8 "
+                 b"/ColorSpace /DeviceRGB /Filter /DCTDecode", self.jpeg),
+            11: (b"/Type /ObjStm /N 1 /First 4 /Filter /FlateDecode", _z.compress(packed)),
+        }))
+
+    def run_builtin(self, *args, ok=True):
+        old = os.environ.get("LE_PDF_ENGINE")
+        os.environ["LE_PDF_ENGINE"] = "builtin"
+        try:
+            return self.run_le(*args, ok=ok)
+        finally:
+            if old is None:
+                del os.environ["LE_PDF_ENGINE"]
+            else:
+                os.environ["LE_PDF_ENGINE"] = old
+
+    def test_text_by_page(self):
+        text = self.run_builtin("extract", self.pdf)
+        self.assertIn("[p. 1]\nTema 1: Electrostática\nLey de Coulomb", text)
+        self.assertIn("[p. 2]\nΩab", text)
+        meta = json.loads(text.split("--- le.py: ", 1)[1])
+        self.assertEqual((meta["pages"], meta["engine"], meta["little_text"]), (2, "builtin", "1-2"))
+        self.assertIn("--pages 1-2", meta["render"])
+        only2 = self.run_builtin("extract", self.pdf, "--pages", "2")
+        self.assertNotIn("Coulomb", only2)
+
+    def test_render_pulls_out_scanned_pictures(self):
+        r = self.run_builtin("render", self.pdf, "--pages", "2")
+        self.assertEqual(r["engine"], "builtin")
+        self.assertEqual(Path(r["images"][0]).read_bytes(), self.jpeg)
+        self.assertIn(str(self.home), r["images"][0])
+        self.assertIn("could not", self.run_builtin("render", self.pdf, "--pages", "1", ok=False))
+        self.assertIn("at most 20", self.run_builtin("render", self.pdf, "--pages", "1-30", ok=False))
+
+    def test_flate_image_becomes_png(self):
+        import zlib as _z
+        pixels = bytes(i % 256 for i in range(160 * 120))  # 160 x 120 grey
+        pdf = self.files / "grey.pdf"
+        pdf.write_bytes(build_pdf({
+            1: b"<< /Type /Catalog /Pages 2 0 R >>",
+            2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            3: b"<< /Type /Page /Parent 2 0 R /Resources << /XObject << /I 4 0 R >> >> >>",
+            4: (b"/Subtype /Image /Width 160 /Height 120 /BitsPerComponent 8 /ColorSpace /DeviceGray "
+                b"/Filter /FlateDecode", _z.compress(pixels[:160 * 120])),
+        }))
+        png = Path(self.run_builtin("render", pdf, "--pages", "1")["images"][0]).read_bytes()
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(struct_unpack(">II", png[16:24]), (160, 120))
+
+    def test_not_a_pdf(self):
+        fake = self.files / "fake.pdf"
+        fake.write_text("hello")
+        self.assertIn("could not read", self.run_builtin("extract", fake, ok=False))
+
+    def test_page_ranges(self):
+        self.assertEqual(le.parse_pages("1-3, 7,2", 5), [1, 2, 3])
+        self.assertEqual(le.parse_pages("3-1,9"), [1, 2, 3, 9])
+        self.assertEqual(le.page_ranges([9, 1, 2, 3, 5]), "1-3,5,9")
+
+
+def struct_unpack(fmt, data):
+    return __import__("struct").unpack(fmt, data)
+
 
 class TestSM2(unittest.TestCase):
     def test_intervals(self):
@@ -672,6 +820,136 @@ class TestFindNotesPasted(Base):
             "units": [{"name": "U", "topics": [{"name": "T", "concepts": "a, b"}]}]}))
 
 
+class TestSeveralExams(Base):
+    def setUp(self):
+        super().setUp()
+        self.init(exam_date=day(20), language="Español")
+        self.roadmap(4)
+        self.run_le("init", payload={"exam": {"name": "Historia", "exam_date": day(5)}})
+        self.run_le("roadmap", "set", payload={"units": [{"name": "U", "topics": [{"name": "Roma"}]}]})
+
+    def test_status_lists_every_exam_to_choose(self):
+        s = self.run_le("status")
+        self.assertTrue(s["choose_exam"])
+        rows = {e["slug"]: e for e in s["exams"]}
+        self.assertEqual(set(rows), {"fisica-ii", "historia"})
+        self.assertEqual((rows["historia"]["days_left"], rows["historia"]["active"]), (5, True))
+        self.assertEqual(rows["fisica-ii"]["today"]["new_topics"], 1)
+        one = self.run_le("--exam", "fisica-ii", "status")
+        self.assertEqual((one["exam"]["slug"], one.get("choose_exam")), ("fisica-ii", None))
+        self.assertEqual(self.run_le("status", "--exam", "fisica-ii")["exam"]["slug"], "fisica-ii")
+
+    def test_each_session_names_its_exam(self):
+        """Two windows open at once: one studies Física, the other Historia. Neither moves the other."""
+        self.run_le("record", "--exam", "fisica-ii", payload={"studied_topics": ["t1"]})
+        self.run_le("record", "--exam", "historia", payload={"studied_topics": ["t1"]})
+        self.assertEqual(self.read("profile.json")["active_exam"], "historia")
+        self.assertTrue(self.read("fisica-ii/exam.json")["units"][0]["topics"][0]["studied"])
+        self.assertEqual(self.read("profile.json")["xp"], 2 * le.XP_TOPIC + le.XP_GOAL)
+
+    def test_parallel_writes_lose_nothing(self):
+        env = dict(os.environ, LEARN_EVERYTHING_HOME=str(self.home), LE_TODAY=self.today)
+        payload = json.dumps({"new_cards": [self.card("t1", 5)]})
+        procs = [subprocess.Popen([sys.executable, str(LE), "--exam", slug, "record"], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+                 for slug in ("fisica-ii", "historia") * 4]
+        for p in procs:
+            p.communicate(payload.encode())
+            self.assertEqual(p.returncode, 0)
+        self.assertEqual(self.read("profile.json")["total_answers"], 8)
+
+    def test_hook_mentions_the_other_exams(self):
+        hook = self.run_le("status", "--hook")
+        self.assertIn("Historia — faltan 5 días", hook)
+        self.assertIn("También: Física II (20 días)", hook)
+
+    def test_deleted_active_exam_asks_to_choose(self):
+        self.run_le("delete", "historia", "--confirm", "historia")
+        self.assertEqual(self.run_le("status")["exam"]["slug"], "fisica-ii")  # the other one takes over
+        self.run_le("init", payload={"exam": {"name": "Arte"}})
+        prof = self.read("profile.json")
+        prof["active_exam"] = "gone"
+        (self.home / "profile.json").write_text(json.dumps(prof), encoding="utf-8")
+        self.assertEqual(self.run_le("status")["next_action"], "choose")
+
+    def test_dashboards_link_to_each_other(self):
+        r = self.run_le("dashboard", "--no-open")
+        self.assertEqual(len(r["other_dashboards"]), 1)
+        html = Path(r["dashboard"]).read_text(encoding="utf-8")
+        data = json.loads(html.split("const DATA = ", 1)[1].split(";\n", 1)[0].replace("<\\/", "</"))
+        self.assertEqual([(e["slug"], e["current"]) for e in data["exams"]], [("fisica-ii", False), ("historia", True)])
+        self.assertEqual(data["exams"][0]["href"], "../fisica-ii/dashboard.html")
+        self.assertTrue((self.home / "fisica-ii" / "dashboard.html").exists())
+        self.assertEqual(data["units"][0]["topics"][0]["review"], "/learn:review historia t1")
+
+
+class TestReview(Base):
+    def setUp(self):
+        super().setUp()
+        self.init()
+        (self.files / "a.txt").write_text("a")
+        (self.files / "b.txt").write_text("b")
+        self.run_le("source", "add", payload={"path": str(self.files / "a.txt"), "title": "Tema uno"})
+        self.run_le("source", "add", payload={"path": str(self.files / "b.txt"), "title": "Ondas"})
+        self.run_le("roadmap", "set", payload={"units": [
+            {"name": "Electricidad", "topics": [{"name": "Ley de Coulomb", "sources": ["s1 p.1-3"]},
+                                                {"name": "Campo eléctrico", "sources": ["s1 p.4"]}]},
+            {"name": "Ondas", "topics": [{"name": "Interferencia", "sources": ["s2"]}]}]})
+        self.run_le("record", payload={"studied_topics": ["t1", "t2"], "new_cards": [
+            self.card("t1", 5, prompt="a"), self.card("t1", 1, prompt="b"), self.card("t1", 1, prompt="c"),
+            self.card("t2", 5, prompt="d"), self.card("t2", 5, prompt="e"), self.card("t2", 4, prompt="f")]})
+
+    def session(self, r):
+        return json.loads(Path(r["session_file"]).read_text(encoding="utf-8"))
+
+    def test_targets(self):
+        for args, topics in [(["t2"], ["Campo eléctrico"]), (["u1"], ["Ley de Coulomb", "Campo eléctrico"]),
+                             (["s2"], ["Interferencia"]), (["ley", "de", "coulomb"], ["Ley de Coulomb"]),
+                             (["electricidad"], ["Ley de Coulomb", "Campo eléctrico"]), (["Ondas"], ["Interferencia"]),
+                             ([], ["Ley de Coulomb"])]:
+            self.assertEqual(self.run_le("review", *args)["topics"], topics, args)
+        self.assertIn("nothing matches", self.run_le("review", "termodinámica", ok=False))
+        r = self.run_le("review", "s2")
+        self.assertEqual((r["questions"], r["not_studied_yet"]), (0, ["Interferencia"]))
+
+    def test_weak_cards_first_and_recorded_as_review(self):
+        r = self.run_le("review", "t1", "-n", "2")
+        sess = self.session(r)
+        self.assertEqual(sess["kind"], "review")
+        self.assertEqual([q["prompt"] for q in sess["questions"]], ["b", "c"])  # failed ones first, even if not due
+        self.assertEqual(sess["topics"][0]["notes_cmd"], "le.py notes t1")
+        out = self.run_le("record", payload={"kind": "review", "answers": [{"card": "c2", "quality": 4}]})
+        self.assertEqual(out["answers"], 1)
+        self.assertEqual(read_log_kinds(self.home / "fisica-ii"), ["study", "review"])
+
+
+def read_log_kinds(d):
+    return [json.loads(l)["kind"] for l in (d / "log.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+class TestLabels(Base):
+    def test_translate_names_keeps_progress(self):
+        self.init(language="English")
+        self.run_le("source", "add", payload={"pasted": True, "title": "Apuntes de clase", "summary": "Resumen"})
+        self.run_le("roadmap", "set", payload={"units": [{"name": "Fundamentos", "topics": [
+            {"name": "Qué es el ML", "summary": "Definición", "concepts": ["experiencia", "tarea"]}]}]})
+        self.run_le("record", payload={"studied_topics": ["t1"], "new_cards": [self.card("t1", 5)]})
+        shown = self.run_le("labels", "show")
+        self.assertEqual((shown["units"][0]["name"], shown["topics"][0]["concepts"], shown["sources"][0]["title"]),
+                         ("Fundamentos", ["experiencia", "tarea"], "Apuntes de clase"))
+        r = self.run_le("labels", "set", payload={
+            "units": [{"id": "u1", "name": "Foundations"}],
+            "topics": [{"id": "t1", "name": "What is ML", "summary": "Definition", "concepts": ["experience", "task"]}],
+            "sources": [{"id": "s1", "title": "Class notes", "summary": "Summary"}]})
+        self.assertEqual(r["changed"], 6)
+        topic = self.read("fisica-ii/exam.json")["units"][0]["topics"][0]
+        self.assertEqual((topic["name"], topic["concepts"], bool(topic["studied"])), ("What is ML", ["experience", "task"], True))
+        self.assertEqual(self.read("fisica-ii/sources/index.json")["sources"][0]["title"], "Class notes")
+        self.assertEqual(self.run_le("roadmap", "show")["units"][0]["topics"][0]["cards"], 1)
+        self.assertIn("unknown id", self.run_le("labels", "set", ok=False, payload={"topics": [{"id": "t9", "name": "x"}]}))
+        self.assertIn("non-empty", self.run_le("labels", "set", ok=False, payload={"units": [{"id": "u1", "name": " "}]}))
+
+
 class TestPluginLayout(unittest.TestCase):
     def frontmatter(self, path):
         text = path.read_text(encoding="utf-8")
@@ -681,7 +959,7 @@ class TestPluginLayout(unittest.TestCase):
 
     def test_skills(self):
         names = sorted(p.name for p in (ROOT / "skills").iterdir() if p.is_dir())
-        self.assertEqual(names, ["add", "dashboard", "data", "exam", "learn", "setup"])
+        self.assertEqual(names, ["add", "dashboard", "data", "exam", "learn", "review", "setup"])
         for name in names:
             meta, text = self.frontmatter(ROOT / "skills" / name / "SKILL.md")
             self.assertEqual(meta["name"], name)

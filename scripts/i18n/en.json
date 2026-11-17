@@ -28,7 +28,10 @@
   "topic_n": "{n} new topics",
   "add": "📎 Next step: add your materials with /learn:add",
   "roadmap": "🗺️ The roadmap is not built yet — run /learn",
-  "done": "✅ Today's goal is done — /learn for extra practice"
+  "done": "✅ Today's goal is done — /learn for extra practice",
+  "others": "📚 Also: {list}",
+  "in_days": "{n} {days}",
+  "exam_today_short": "today"
  },
  "edu": {
   "secondary": "Secondary school",
@@ -119,7 +122,15 @@
   "strong": "Strong points",
   "weak": "To improve",
   "focusEmpty": "Answer a few questions per topic to see your strong and weak points.",
-  "pasted": "Pasted in the chat"
+  "pasted": "Pasted in the chat",
+  "review1": "review",
+  "newTopic": "new topic",
+  "reviewTopic": "🔁 Review this topic",
+  "reviewSource": "Review the topics from this material",
+  "copied": "Copied. Paste it in Claude Code and press Enter:",
+  "copyFail": "Copy this command into Claude Code:",
+  "reviewKind": "Review",
+  "exams": "Your exams"
  },
  "achievements": {
   "first_session": ["First step", "Complete your first session"],

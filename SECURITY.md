@@ -16,5 +16,5 @@ Learn Everything reads files the learner chooses and keeps their study data on t
 
 - writing or deleting anything outside the data folder (`~/learn-everything/` or `LEARN_EVERYTHING_HOME`);
 - modifying the learner's original files;
-- a crafted export zip, document or notes file that makes `le.py` write outside its folder or run code;
+- a crafted export zip, PDF, notebook, document or notes file that makes `le.py` write outside its folder, run code or hang;
 - the dashboard loading anything from the network or running injected script.

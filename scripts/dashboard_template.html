@@ -181,6 +181,18 @@ th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 12px; p
 td { padding: 6px 8px 6px 0; border-top: 1px solid var(--hair); vertical-align: top; }
 td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
 .scroll { overflow-x: auto; }
+.exams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; }
+.exams span { font-size: 12.5px; color: var(--ink-2); margin-right: 2px; }
+.exams a { font-size: 13px; color: var(--ink-2); text-decoration: none; background: var(--surface); border: 1px solid var(--hair); border-radius: 99px; padding: 4px 12px; }
+.exams a:hover { border-color: var(--axis); color: var(--ink); }
+.exams a[aria-current="page"] { background: var(--ink); border-color: var(--ink); color: var(--surface); font-weight: 600; }
+.exams a small { margin-left: 4px; opacity: .75; font-weight: 400; }
+.rbtn { margin-top: 14px; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-size: 13.5px; font-weight: 600; }
+.rbtn:hover { filter: brightness(1.08); }
+.ibtn { background: var(--surface); border: 1px solid var(--hair); border-radius: 6px; padding: 1px 7px; font-size: 13px; line-height: 1.6; }
+.ibtn:hover { border-color: var(--axis); }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10; width: max-content; max-width: calc(100% - 32px); background: var(--ink); color: var(--surface); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; box-shadow: 0 6px 20px rgba(0,0,0,.25); display: none; }
+.toast code { display: block; margin-top: 4px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; user-select: all; overflow-wrap: anywhere; }
 #tip { position: fixed; z-index: 9; pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12.5px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; display: none; }
 footer { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: center; }
 
@@ -199,6 +211,7 @@ footer { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: cen
 <body>
 <div class="wrap" id="app"></div>
 <div id="tip" role="status"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script>
 const DATA = /*__LE_DATA__*/null;
 
@@ -227,7 +240,10 @@ const NO_DATA = "No data. Run /learn:dashboard to generate this page.";
   const lvPct = Math.round(100 * (lv.xp - lv.floor) / (lv.next - lv.floor));
   const goal = DATA.goal_done_today || (!plan.reviews_today_remaining && !plan.new_today_remaining && tot.topics > 0);
 
-  let html = `
+  const exams = DATA.exams || [];
+  const nTopics = plan.new_today_remaining, nReviews = plan.reviews_today_remaining;
+  let html = (exams.length > 1 ? `<nav class="exams" aria-label="${esc(T.exams)}"><span>${T.exams}:</span>${exams.map(e =>
+    `<a href="${esc(e.href)}"${e.current ? ' aria-current="page"' : ""}>${esc(e.name)}${e.days_left != null && e.days_left >= 0 ? "<small>" + e.days_left + " " + (e.days_left === 1 ? T.day : T.days) + "</small>" : ""}</a>`).join("")}</nav>` : "") + `
   <header>
     <div><h1>${esc(DATA.exam.name)}</h1>
       <div class="sub">${esc(DATA.learner.name)}${DATA.learner.education_level ? " · " + esc(DATA.learner.education_level) : ""} · ${tot.studied}/${tot.topics} ${T.topics} ${T.studied}</div></div>
@@ -240,8 +256,8 @@ const NO_DATA = "No data. Run /learn:dashboard to generate this page.";
     <div class="tile"><div class="k">${T.level}</div><div class="v">${lv.level}<small>${lv.xp} XP</small></div>
       <div class="bar" role="img" aria-label="${lvPct}%"><i style="width:${lvPct}%"></i></div><div class="d">${lv.next - lv.xp} ${T.xpTo} ${lv.level + 1}</div></div>
     <div class="tile"><div class="k">${T.today}</div>
-      <div class="v">${goal ? '<span class="ok" style="font-size:22px">' + T.goalDone + "</span>" : plan.reviews_today_remaining + "<small>" + T.reviews + "</small>"}</div>
-      <div class="d">${goal ? (plan.topics_pending ? plan.new_per_day + " " + T.perDay : T.reviewPhase) : "+ " + plan.new_today_remaining + " " + T.newTopics}</div></div>
+      <div class="v">${goal ? '<span class="ok" style="font-size:22px">' + T.goalDone + "</span>" : nReviews + "<small>" + (nReviews === 1 ? T.review1 : T.reviews) + "</small>"}</div>
+      <div class="d">${goal ? (plan.topics_pending ? plan.new_per_day + " " + T.perDay : T.reviewPhase) : "+ " + nTopics + " " + (nTopics === 1 ? T.newTopic : T.newTopics)}</div></div>
     <div class="tile"><div class="k">${T.accuracy}</div><div class="v">${tot.accuracy == null ? "—" : tot.accuracy + "<small>%</small>"}</div>
       <div class="d">${tot.answers ? tot.answers + " " + T.answers + " " + T.totals : T.noAnswers}</div></div>
   </section>
@@ -364,7 +380,8 @@ const NO_DATA = "No data. Run /learn:dashboard to generate this page.";
         <div><b>×${t.weight}</b><span>${T.weight}</span></div>
       </div>
       ${t.concepts && t.concepts.length ? '<div class="chips" style="margin-top:12px">' + t.concepts.map(x => "<span>" + esc(x) + "</span>").join("") + "</div>" : ""}
-      ${t.sources.map(s => '<span class="pill">📄 ' + esc(s) + "</span>").join("")}`;
+      ${t.sources.map(s => '<span class="pill">📄 ' + esc(s) + "</span>").join("")}
+      ${t.review ? `<div><button class="rbtn" data-cmd="${esc(t.review)}">${T.reviewTopic}</button></div>` : ""}`;
     if (reveal) {
       const box = document.getElementById("detail"), r = box.getBoundingClientRect();
       if (r.top < 0 || r.bottom > window.innerHeight) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -468,11 +485,34 @@ const NO_DATA = "No data. Run /learn:dashboard to generate this page.";
     ? table([[T.date], [T.score, "n"], ["%", "n"]], DATA.mocks.slice().reverse().map(m => `<tr><td>${fmt(m.date)}</td><td class="n">${m.score}/${m.total}</td><td class="n">${m.pct}%</td></tr>`))
     : `<div class="empty">${T.mocksEmpty}</div>`;
   document.getElementById("sources").innerHTML = DATA.sources.length
-    ? table([[T.file], [T.pages, "n"], [T.added, "n"]], DATA.sources.map(s => `<tr><td title="${esc(s.summary)}">${esc(s.name)}<div style="color:var(--muted);font-size:12px">${esc(s.file || T.pasted)}</div></td><td class="n">${s.pages == null ? "—" : esc(s.pages)}</td><td class="n">${s.added ? fmt(s.added) : ""}</td></tr>`))
+    ? table([[T.file], [T.pages, "n"], [T.added, "n"], [""]], DATA.sources.map(s => `<tr><td title="${esc(s.summary)}">${esc(s.name)}<div style="color:var(--muted);font-size:12px">${esc(s.file || T.pasted)}</div></td><td class="n">${s.pages == null ? "—" : esc(s.pages)}</td><td class="n">${s.added ? fmt(s.added) : ""}</td><td class="n">${s.review ? `<button class="ibtn" data-cmd="${esc(s.review)}" title="${esc(T.reviewSource)}" aria-label="${esc(T.reviewSource)}">🔁</button>` : ""}</td></tr>`))
     : `<div class="empty">${T.sourcesEmpty}</div>`;
+  const KIND = { mock: T.mock, review: T.reviewKind };
   document.getElementById("sessions").innerHTML = DATA.sessions.length
-    ? table([[T.date], [T.kind], [T.minutes, "n"], [T.correct, "n"], [T.xp, "n"]], DATA.sessions.map(s => `<tr><td>${fmt(s.date)}</td><td>${s.kind === "mock" ? T.mock : T.study}</td><td class="n">${s.minutes || "—"}</td><td class="n">${s.correct}/${s.answers}</td><td class="n">+${s.xp}</td></tr>`))
+    ? table([[T.date], [T.kind], [T.minutes, "n"], [T.correct, "n"], [T.xp, "n"]], DATA.sessions.map(s => `<tr><td>${fmt(s.date)}</td><td>${KIND[s.kind] || T.study}</td><td class="n">${s.minutes || "—"}</td><td class="n">${s.correct}/${s.answers}</td><td class="n">+${s.xp}</td></tr>`))
     : `<div class="empty">${T.noAnswers}</div>`;
+
+  // ---------- "Review" buttons: a static page cannot type into the terminal, so it copies the command
+  const toast = document.getElementById("toast");
+  let toastTimer = null;
+  function showToast(ok, cmd) {
+    toast.innerHTML = `${ok ? T.copied : T.copyFail}<code>${esc(cmd)}</code>`;
+    toast.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.style.display = "none"; }, ok ? 7000 : 20000);
+  }
+  function copyCmd(cmd) {
+    // The command is always shown, selectable, so it works even where the page may not copy.
+    const ta = document.createElement("textarea");
+    ta.value = cmd; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) {}
+    ta.remove();
+    showToast(ok, cmd);
+    if (!ok && navigator.clipboard) navigator.clipboard.writeText(cmd).then(() => showToast(true, cmd), () => {});
+  }
+  document.addEventListener("click", e => { const b = e.target.closest("[data-cmd]"); if (b) copyCmd(b.dataset.cmd); });
 
   // ---------- theme toggle
   const root = document.documentElement;
