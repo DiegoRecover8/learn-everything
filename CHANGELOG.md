@@ -4,6 +4,17 @@ All notable changes are listed here. The project follows [semantic versioning](h
 
 ## Unreleased
 
+## 0.2.2 — 2026-11-18
+
+### Fixed
+
+- A true-or-false question whose answer came as the text `"false"` instead of `false` made the whole session fail to save. Both forms are accepted now.
+- Commands could fail on macOS (zsh) when Claude kept the script path in a shell variable, or edited the notes with `sed -i`. The skills now say to type the command in full, and to append notes with `cat >>` and fix them with the Edit tool.
+
+### Added
+
+- Demo video at the top of the README.
+
 ## 0.2.1 — 2026-11-17
 
 ### Fixed

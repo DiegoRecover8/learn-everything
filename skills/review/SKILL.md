@@ -10,7 +10,7 @@ allowed-tools: Read, Write, Bash, AskUserQuestion
 
 A focused review of what the learner picks: one topic, a whole unit, everything that came from one material, or their weakest topics. It works any time, also at the start or end of a daily session, and does not replace the daily plan.
 
-**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Also read `../learn/references/exercises.md` for how to ask and grade.
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory; type the full command each time, never through a shell variable such as `$LE`, which zsh does not split into words). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Also read `../learn/references/exercises.md` for how to ask and grade.
 
 ## 1. Which exam, which target
 

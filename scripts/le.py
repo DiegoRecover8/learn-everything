@@ -35,7 +35,7 @@ import zlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 TAG = "[Learn Everything]"
 
 SUPPORTED = {
@@ -468,6 +468,8 @@ def validate_card(c, topic_ids):
         if not strs(opts, 2) or not strs(ans) or any(a not in opts for a in ans):
             raise LEError("%s: multi needs options (2+) and answer as a list of options" % where)
     elif kind == "tf":
+        if isinstance(ans, str) and ans.strip().lower() in ("true", "false"):
+            ans = ans.strip().lower() == "true"
         if not isinstance(ans, bool):
             raise LEError("%s: tf answer must be true or false" % where)
     elif kind in ("cloze", "short", "essay"):

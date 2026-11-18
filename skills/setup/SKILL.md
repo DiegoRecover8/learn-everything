@@ -10,7 +10,7 @@ allowed-tools: Read, Write, Bash, Glob, AskUserQuestion
 
 Creates the learner profile and an exam, or edits them. It takes about a minute.
 
-**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too.
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory; type the full command each time, never through a shell variable such as `$LE`, which zsh does not split into words). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too.
 
 **Every question goes through AskUserQuestion**, so the learner clicks instead of typing. AskUserQuestion takes up to 4 questions per call and **2 to 4 options per question**, never more.
 

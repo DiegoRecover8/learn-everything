@@ -3,14 +3,14 @@ name: add
 description: Learn Everything — load study materials (PDF, Word, PowerPoint, Jupyter notebooks, photos, text) and build or extend the roadmap.
 argument-hint: "[file or folder]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Bash, Glob, AskUserQuestion
+allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion
 ---
 
 # Adding materials
 
 Each file is read **once**. You turn it into study notes saved in the data folder, and from then on everything works from those notes. The original is never needed again and never modified.
 
-**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Run `le.py status` first if you do not know the learner's language yet; if there is no profile, follow `../setup/SKILL.md` first. If `exams` lists several and you do not know which one the materials are for, ask, then use `--exam <slug>` on every command.
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory; type the full command each time, never through a shell variable such as `$LE`, which zsh does not split into words). It prints JSON; errors come as `{"error": ...}` on stderr. The rules in `../learn/SKILL.md` ("Rules that always apply") hold here too. Run `le.py status` first if you do not know the learner's language yet; if there is no profile, follow `../setup/SKILL.md` first. If `exams` lists several and you do not know which one the materials are for, ask, then use `--exam <slug>` on every command.
 
 Supported: PDF, DOCX, PPTX, IPYNB (Jupyter), RTF, JPG, PNG, WEBP, GIF, TXT, MD, CSV.
 
@@ -80,7 +80,7 @@ Write the notes with the Write tool to `notes_path`. These notes replace the ori
 - Do not add content that is not in the file. Do not leave out content because it looks secondary.
 - Use the language of the original.
 
-For a long file, write the notes as you go (one Write, then rewrite with more sections) instead of holding the whole document in memory.
+For a long file, write the notes as you go instead of holding the whole document in memory: the first part with the Write tool, then each next part appended in Bash with `cat >> "<notes_path>" <<'EOF'` … `EOF`. To change something already written (a heading, a page range), use the Edit tool. Do not use `sed -i`: it takes different arguments on macOS and Linux and fails on one of them.
 
 Repeat steps 3 to 5 for each new file.
 

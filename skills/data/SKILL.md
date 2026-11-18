@@ -7,7 +7,7 @@ allowed-tools: Read, Bash, AskUserQuestion
 
 # Managing data
 
-**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). It prints JSON; errors come as `{"error": ...}` on stderr. Speak the learner's language (`learner.language` from `le.py status`).
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory; type the full command each time, never through a shell variable such as `$LE`, which zsh does not split into words). It prints JSON; errors come as `{"error": ...}` on stderr. Speak the learner's language (`learner.language` from `le.py status`).
 
 Everything lives in one folder: `~/learn-everything/`, or the folder in the `LEARN_EVERYTHING_HOME` environment variable. `le.py status` prints it as `home`.
 

@@ -6,7 +6,7 @@
 
 A plugin for [Claude Code](https://claude.com/claude-code)
 
-[![Version](https://img.shields.io/badge/version-0.2.1-2a78d6)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.2-2a78d6)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0ca30c)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776ab)](https://www.python.org/)
 [![Tests](https://github.com/DiegoRecover8/learn-everything/actions/workflows/tests.yml/badge.svg)](https://github.com/DiegoRecover8/learn-everything/actions/workflows/tests.yml)
@@ -19,7 +19,7 @@ A plugin for [Claude Code](https://claude.com/claude-code)
 
 You give it your PDFs, slides, Word files and photos of your notes **once**. It builds a roadmap of everything that goes into the exam, plans every day until exam day, explains each topic from your own materials, quizzes you, brings questions back right before you would forget them, and keeps you going with streaks, XP and achievements, Duolingo style.
 
-<!-- DEMO VIDEO: on github.com, edit this file and drag the .mp4 here; GitHub uploads it and inserts a link that plays in the page. Put it in place of this comment. -->
+https://github.com/user-attachments/assets/e3641ba7-4212-4db5-afcc-65499a3eeaa2
 
 ## ✨ Features
 

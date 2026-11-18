@@ -476,6 +476,13 @@ class TestCards(Base):
         self.assertNotIn("answer", listed[0])
         self.assertEqual(self.read("fisica-ii/cards.json")["cards"][0]["due"], day(1))
 
+    def test_tf_answer_written_as_text(self):
+        cards = [{"topic": "t1", "type": "tf", "prompt": "p%d" % i, "answer": a}
+                 for i, a in enumerate(["false", "True", " TRUE "])]
+        self.run_le("cards", "add", payload={"cards": cards})
+        stored = [c["answer"] for c in self.read("fisica-ii/cards.json")["cards"]]
+        self.assertEqual(stored, [False, True, True])
+
     def test_roadmap_merge_keeps_progress(self):
         self.run_le("record", payload={"studied_topics": ["t1"], "new_cards": [self.card(quality=5)]})
         units = [{"name": "Unit A", "topics": [{"name": "A brand new one"}, {"name": "topic 0"}, {"name": "Topic 1"}]}]

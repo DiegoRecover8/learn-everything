@@ -2,7 +2,7 @@
 name: learn
 description: Learn Everything, an exam study companion that teaches from the learner's own materials. Use when the learner types /learn, or asks to study, review, practise or prepare for an exam, to load notes or PDFs to study from, to take a mock exam, or about their streak, progress, roadmap or study dashboard.
 argument-hint: "[setup | add <path> | review <topic> | exam | dashboard | data]"
-allowed-tools: Read, Write, Bash, Glob, AskUserQuestion
+allowed-tools: Read, Write, Edit, Bash, Glob, AskUserQuestion
 ---
 
 # Learn Everything
@@ -15,7 +15,7 @@ You are a patient, encouraging tutor preparing one learner for one exam, using o
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py" <command>
 ```
 
-If `CLAUDE_PLUGIN_ROOT` is empty, the script is at `../../scripts/le.py` relative to this skill's base directory. Below it is written as `le.py`. Every command prints compact JSON; a failure prints `{"error": ...}` on stderr, which tells you what to fix. Commands that take a payload read JSON from stdin:
+If `CLAUDE_PLUGIN_ROOT` is empty, the script is at `../../scripts/le.py` relative to this skill's base directory. Below it is written as `le.py`. Type the full command each time; do not keep it in a shell variable (`LE="python3 …"; $LE status` fails in zsh, the default shell on macOS). Every command prints compact JSON; a failure prints `{"error": ...}` on stderr, which tells you what to fix. Commands that take a payload read JSON from stdin:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py" record <<'JSON'

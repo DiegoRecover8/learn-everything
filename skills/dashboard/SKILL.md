@@ -8,7 +8,7 @@ allowed-tools: Bash, AskUserQuestion
 
 # Dashboard
 
-**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory). Speak the learner's language (`learner.language` from `le.py status`).
+**Basics.** The script is `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/le.py"` (written `le.py` below; if `CLAUDE_PLUGIN_ROOT` is empty it is `../../scripts/le.py` from this skill's base directory; type the full command each time, never through a shell variable such as `$LE`, which zsh does not split into words). Speak the learner's language (`learner.language` from `le.py status`).
 
 1. Run `le.py status`. Each exam has its own dashboard. If the learner named an exam, or one was chosen earlier in this conversation, use it. Otherwise open the active one; there is no need to ask, because every dashboard has a switcher at the top to jump to the others.
 2. Run `le.py [--exam <slug>] dashboard`. It rebuilds the dashboard of every exam and opens the one asked for in the browser (`opened` says whether it could). If there is no profile or exam yet, it fails: point the learner to `/learn:setup`.
