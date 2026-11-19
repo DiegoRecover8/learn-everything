@@ -24,6 +24,5 @@
     "gamification",
     "dashboard"
   ],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }

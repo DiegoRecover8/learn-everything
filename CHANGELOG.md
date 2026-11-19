@@ -4,6 +4,10 @@ All notable changes are listed here. The project follows [semantic versioning](h
 
 ## Unreleased
 
+### Fixed
+
+- `plugin.json` listed `hooks/hooks.json`, which Claude Code already loads on its own, so the hooks file was declared twice and could be reported as a duplicate. The extra entry is gone.
+
 ## 0.2.2 — 2026-11-18
 
 ### Fixed
