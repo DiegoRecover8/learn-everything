@@ -6,7 +6,7 @@
 
 A plugin for [Claude Code](https://claude.com/claude-code)
 
-[![Version](https://img.shields.io/badge/version-0.2.2-2a78d6)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.3-2a78d6)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0ca30c)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776ab)](https://www.python.org/)
 [![Tests](https://github.com/DiegoRecover8/learn-everything/actions/workflows/tests.yml/badge.svg)](https://github.com/DiegoRecover8/learn-everything/actions/workflows/tests.yml)

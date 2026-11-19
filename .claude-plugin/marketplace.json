@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Single-plugin marketplace hosting Learn Everything, an exam study companion for Claude Code.",
-    "version": "0.2.2"
+    "version": "0.2.3"
   },
   "plugins": [
     {
@@ -30,7 +30,7 @@
         "name": "DiegoRecover8",
         "url": "https://github.com/DiegoRecover8"
       },
-      "version": "0.2.2"
+      "version": "0.2.3"
     }
   ]
 }
